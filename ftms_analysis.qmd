@@ -1,0 +1,656 @@
+---
+title: "Untitled"
+format: html
+server: shiny
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Shiny Documents
+
+This Quarto document is made interactive using Shiny. Interactive documents allow readers to modify parameters and see the results immediately. Learn more about Shiny interactive documents at <https://quarto.org/docs/interactive/shiny/>.
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change. This demonstrates how a standard R plot can be made interactive:
+
+```{r}
+library(MSnbase)
+library(MsExperiment)
+library(Spectra)
+library(dplyr)
+library(tidyr)
+library(BiocParallel)
+library(xcms)
+library(MsExperiment)
+library(Spectra)
+library(readxl)
+library(pander)
+library(pheatmap)
+register(SerialParam())
+```
+
+now we import our dataset
+
+```{r}
+sample_data_ftms <- read_xlsx("C:/Users/amentag/Desktop/these/These/Ahlam/XCMS/flaxseed/ftms_data_files.xlsx") |>
+                    as.data.frame()
+file <- "C:/Users/amentag/Desktop/these/These/Ahlam/XCMS/flaxseed/S_all/"
+ftms <- readMsExperiment(paste0(file,sample_data_ftms$data_file), sampleData = sample_data_ftms)
+ftms
+```
+
+```{r}
+sample_data_ftms
+```
+
+```{r}
+pandoc.table(as.data.frame(sampleData(ftms)), caption = "Data files",
+             split.table = Inf, style = "rmarkdown")
+```
+
+```{r}
+msLevel(spectra(ftms)) |>
+  table()
+```
+
+Defining colors for each sample
+
+```{r}
+library(RColorBrewer)
+# colors
+col_sample_ftms_id <- brewer.pal(9, "Set1")[c(1, 2)]  
+names(col_sample_ftms_id) <- unique(sample_data_ftms$sample_id) 
+# Assigne colors for each single name in the sample_id
+names(col_sample_ftms_id) <- c("S1", "S9")
+col_sample_ftms <- col_sample_ftms_id[sample_data_ftms$sample_id]
+```
+
+BPC Chromatogram
+
+```{r}
+bpc <- chromatogram(ftms, aggregationFun = "max")
+plot(bpc, col = col_sample_ftms)
+```
+
+We next clean the data set filtering to a retention time range of 0-1500 seconds.
+
+```{r}
+ftms <- filterSpectra(ftms, filterRt, c(10,1500))
+msLevel(spectra(ftms)) |>
+  table()
+
+```
+
+now we filter empty spectra
+
+```{r}
+ftms <- filterSpectra(ftms, filterEmptySpectra)
+msLevel(spectra(ftms)) |>
+  table()
+```
+
+We next extract a total ion chromatogram (TIC) and base peak chromatogram (BPC) and calculate the similarities between these to evaluate similarity in the performance of the liquid chromatography.
+
+```{r}
+#' Extract TIC
+tic <- chromatogram(ftms, aggregationFun = "sum")
+#' Bin the signal
+ticb <- bin(tic, binSize = 80)
+
+ticmap <- ticb |>
+    lapply(intensity) |>
+    do.call(what = rbind) |>
+    log2()
+
+colnames(ticmap) <- rtime(ticb[[1]])
+rownames(ticmap) <- sampleData(ftms)$sample_name
+
+#' Center the data per bin by subtracting the median
+ticmap <- scale(ticmap, center = TRUE, scale = FALSE)
+
+ann <- data.frame(sample_id = sampleData(ftms)[, "sample_id"])
+rownames(ann) <- rownames(ticmap)
+
+pheatmap(ticmap, cluster_cols = FALSE,
+         annotation_colors = list(sample_id = col_sample_ftms_id),
+         annotation_row = ann)
+```
+
+![](http://127.0.0.1:24279/graphics/6d4ed144-479a-4398-b778-fcc23b080562.png)
+
+Now we plot the tic
+
+```{r}
+plot(tic, col = paste0(col_sample_ftms, 80), main = "TIC")
+```
+
+![](http://127.0.0.1:24279/graphics/3e8cd59b-7136-464b-b5f9-1fcb3ad07600.png)
+
+We repeat this analysis also for the BPC.
+
+```{r}
+#' Extract BPC
+bpc <- chromatogram(ftms, aggregationFun = "sum")
+#' Bin the signal
+bpcb <- bin(bpc, binSize = 80)
+
+bpcmap <- bpcb |>
+    lapply(intensity) |>
+    do.call(what = rbind) |>
+    log2()
+
+colnames(bpcmap) <- rtime(bpcb[[1]])
+rownames(bpcmap) <- sampleData(ftms)$sample_name
+
+#' Center the data per bin by subtracting the median
+bpcmap <- scale(bpcmap, center = TRUE, scale = FALSE)
+pheatmap(bpcmap, cluster_cols = FALSE,
+         annotation_colors = list(sample_ftms_id = col_sample_ftms_id),
+         annotation_row = ann)
+```
+
+![](http://127.0.0.1:24279/graphics/77817158-2ace-4084-b032-da19663540bc.png)
+
+Now we plot the BPC
+
+```{r}
+plot(bpc, col = paste0(col_sample_ftms, 80), main = "BPC")
+```
+
+![](http://127.0.0.1:24279/graphics/423b3ed6-5cf4-455e-adea-6fbf2648707f.png)
+
+# Data preprocessing
+
+here we take an my range of an known compound
+
+```{r}
+mzr <- c(287.04, 287.06)
+
+a_kn <- chromatogram(ftms, mz = mzr, aggregationFun = "max")
+plot(a_kn, col = paste0(col_sample_ftms, 80))
+grid()
+
+```
+
+```{r}
+#' Focus on the retention time range with the highest signal
+plot(a_kn, xlim = c(1300, 1500))
+
+#' Plot it for a single sample
+plot(a_kn[, 9], xlim = c(1300, 1500))
+```
+
+```{r}
+tmp <- filterMz(ftms, mz = mzr) |>
+    filterRt(rt = c(1400, 1440))
+plot(tmp[1])
+```
+
+Next we run the chromatographic peak detection on that extracted ion chromatogram
+
+```{r}
+a_kn2 <- findChromPeaks(a_kn, CentWaveParam(peakwidth = c(20, 80), integrate = 2))
+
+```
+
+```{r}
+pks <- chromPeaks(a_kn2)
+head(pks)
+quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
+```
+
+```{r}
+par(mfrow = c(1, 2))
+#' In one sample
+plot(a_kn2[, 1], xlim = c(1390, 1450))
+#' In all samples
+plot(a_kn2[, 1:5], xlim = c(1390, 1450))
+```
+
+![](http://127.0.0.1:24279/graphics/0b912f46-8a08-4e35-841d-f4be40c0581b.png)
+
+the same on another retention time range
+
+```{r}
+plot(a_kn2[, 1], xlim = c(870, 1000))
+plot(a_kn2[, 1:5], xlim = c(870, 1000))
+```
+
+```{r}
+plot(a_kn2[, 1], xlim = c(0, 500))
+plot(a_kn2[, 1:5], xlim = c(0, 500))
+```
+
+Eventually we could try another m/z range...
+
+```{r}
+plot(bpc)
+grid()
+abline(v = c(1020, 1100), col = "grey")
+plot(bpc[, 1], xlim = c(1020, 1100))
+```
+
+Below we extract the ion chromatogram for this m/z range.
+
+```{r}
+mzr <- c(287.04, 287.06)
+
+a <- chromatogram(ftms, mz = mzr, aggregationFun = "max")
+plot(a, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+This m/z range seems to contain signal from several ions, eluting at different retention times. We next focus on a retention time range to inspect the signal from a single ion.
+
+```{r}
+plot(a, col = paste0(col_sample_ftms, 80), xlim = c(1400, 1500))
+grid()
+```
+
+We next perform the chromatographic peak detection using the centWave algorithm. With integrate = 2 we use an alternative algorithm to correctly identify the boundaries of the identified chromatographic peaks. Parameter chunkSize is used to control the number of files from which the data should be loaded into memory at a time.
+
+```{r}
+ftms <- findChromPeaks(ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2),
+                       chunkSize = 2)
+```
+
+With this setting we identified r nrow(chromPeaks(qtof)) peaks in the full data set. The distribution of the peak widths in retention time and in m/z dimensions are:
+
+```{r}
+pks <- chromPeaks(ftms)
+quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
+quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
+```
+
+We next perform the chromatographic peak refinement to reduce the number of potential centWave-specific peak detection artifacts. We choose settings that depend on the observed peak widths above (i.e. half of the observed average widths).
+
+```{r}
+mnpp <- MergeNeighboringPeaksParam(expandRt = 13, expandMz = 0.0003)
+ftms <- refineChromPeaks(ftms, mnpp)
+```
+
+We evaluate the observed peak widths also after refinement.
+
+```{r}
+pks <- chromPeaks(ftms)
+quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
+quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
+```
+
+We next perform an initial correspondence analysis that is needed for the subsequent retention time alignment. We evaluate the settings on the example m/z range from above.
+
+```{r}
+#' Extract the ion chromatogram again.
+a <- chromatogram(ftms, aggregationFun = "max", mz = mzr)
+
+#' Configure settings
+
+pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
+                        bw = 6, minFraction = 0.5)
+
+#' Evaluate settings on the full range
+plotChromPeakDensity(a, param = pdp, col = col_sample_ftms)
+```
+
+now we will focus on a smaller retention time range
+
+```{r}
+a_sub <- filterRt(a, rt = c(1300, 1500))
+plotChromPeakDensity(a_sub, param = pdp, col = col_sample_ftms)
+
+plot(a_sub[, 1])
+```
+
+```{r}
+ftms <- groupChromPeaks(ftms, param = pdp)
+```
+
+we nwxt perform retention time alignment
+
+```{r}
+pgp <- PeakGroupsParam(
+    minFraction = 0.9,
+    extraPeaks = 100,
+    smooth = "loess",
+    span = 0.4,
+    family = "gaussian"
+)
+ftms <- adjustRtime(ftms, param = pgp)
+```
+
+Below we plot the results from the retention time alignment, i.e., the difference between the original and adjusted retention times (y-axis) along the retention time axis (x-axis).
+
+```{r}
+plotAdjustedRtime(ftms, col = paste0(col_sample_ftms, 80))
+```
+
+![](http://127.0.0.1:24279/graphics/760c61f9-955f-4eaa-b26d-07078eb31425.png)
+
+we can see from the plot above that there is one sample that has been largely adjusted
+
+```{r}
+bpc_adj <- chromatogram(ftms, aggregationFun = "max")
+#' Calculate similarity (Pearson correlation) between BPCs
+#' Bin the signal
+bpcb <- bin(bpc_adj, binSize = 80)
+
+bpcmap <- bpcb |>
+    lapply(intensity) |>
+    do.call(what = rbind) |>
+    log2()
+
+colnames(bpcmap) <- rtime(bpcb[[1]])
+rownames(bpcmap) <- sampleData(ftms)$sample_name
+
+#' Center the data per bin by subtracting the median
+bpcmap <- scale(bpcmap, center = TRUE, scale = FALSE)
+pheatmap(bpcmap, cluster_cols = FALSE,
+         annotation_colors = list(sample_ftms_id = col_sample_ftms_id),
+         annotation_row = ann)
+```
+
+![](http://127.0.0.1:24279/graphics/d0a52810-5d44-4abc-9659-734e00a0bc0f.png){width="583"}
+
+we see that S1 and S9 are well grouped after retention time alignment.
+
+Now we can visualize the changes before and after retention time alignment
+
+```{r}
+bpc_adj <- chromatogram(ftms, aggregationFun = "max", chromPeaks = "none")
+a_adj <- chromatogram(ftms, aggregationFun = "max", mz = mzr)
+```
+
+We first plot the BPC of the original data and then of the data after retention time alignment.
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc, col = paste0(col_sample_ftms, 80))
+grid()
+
+```
+
+![](http://127.0.0.1:24279/graphics/960a849d-1238-47f8-bed7-79fefa7ec2c9.png)
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc_adj, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/962b9570-e560-4f9c-9258-7725876076e9.png){width="708"}
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc, col = paste0(col_sample_ftms, 80), xlim = c(400, 500))
+grid()
+
+```
+
+![](http://127.0.0.1:24279/graphics/68bfe554-5dfb-46f2-a3d1-1e35acd9b3f3.png)
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc_adj, col = paste0(col_sample_ftms, 80), xlim = c(400, 500))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/3df965ff-7b76-451c-9a20-acf5e0d19bb7.png)
+
+We in addition evaluate the signal for the example m/z range.
+
+```{r}
+par(mfrow = c(2, 1))
+plot(a, col = paste0(col_sample_ftms, 80))
+grid()
+plot(a_adj, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/ca3510a0-f36d-4fd8-bdee-1f851fe4d0a8.png)
+
+the data seems to be better aligned. Finally, we zoom into a retention time window from 1300 to 1500 seconds.
+
+```{r}
+par(mfrow = c(2, 1))
+plot(a, col = paste0(col_sample_ftms, 80), peakType = "none",
+     xlim = c(1300, 1500))
+plot(a_adj, col = paste0(col_sample_ftms, 80),
+     xlim = c(1300, 1500), peakType = "none")
+```
+
+![](http://127.0.0.1:24279/graphics/8857c7ef-f0f9-4d74-9175-2c531ad2a427.png)
+
+We can thus conclude that the settings for the retention time alignment worked on the present data set. We continue the preprocessing with the final correspondence analysis. We adapt now the settings, in particular the bw parameter, that can be much stricter because of the properly aligned data set. Again, we test the settings on the extracted ion signal.
+
+```{r}
+#' Configure settings
+pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
+                        bw = 2, minFraction = 0.5)
+
+#' Evaluate settings on the full range
+plotChromPeakDensity(a_adj, param = pdp, col = col_sample_ftms)
+```
+
+![](http://127.0.0.1:24279/graphics/81c77abe-1edd-4726-aa6f-8efe03649198.png)
+
+we zoom into a smaller region with multiple peaks
+
+```{r}
+a_adj_2 <- filterRt(a_adj, c(800, 1500))
+plotChromPeakDensity(a_adj_2, param = pdp, col = col_sample_ftms)
+```
+
+![](http://127.0.0.1:24279/graphics/2c299f13-a241-426e-aaea-77d0b5f6d227.png)
+
+```{r}
+a_adj_2 <- filterRt(a_adj, c(1250, 1450))
+plotChromPeakDensity(a_adj_2, param = pdp, col = col_sample_ftms)
+
+```
+
+![](http://127.0.0.1:24279/graphics/310763f6-a6f4-4009-8fc8-c12304f5f60b.png)
+
+now we group chromatographic peak
+
+```{r}
+ftms <- groupChromPeaks(ftms, param = pdp)
+```
+
+As a final step we next perform gap-filling to reduce the number of missing values in the data set.
+
+```{r}
+#' The number of missing values before gap filling
+sum(is.na(featureValues(ftms)))
+head(featureValues(ftms))
+```
+
+```{r}
+#' Perform gap-filling
+ftms <- fillChromPeaks(ftms, param = ChromPeakAreaParam())
+```
+
+```{r}
+sum(is.na(featureValues(ftms)))
+head(featureValues(ftms))
+```
+
+```{r}
+#' Save the result object
+save(ftms, file = "C:/Users/amentag/Desktop/Rcodes/ftms.RData")
+```
+
+```{r}
+mzr <- c(287.04, 287.06)
+
+a <- chromatogram(ftms, mz = mzr, aggregationFun = "max")
+plot(a, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/4083c5c9-bc86-4bc3-ba1c-9598f2834b8d.png)
+
+```{r}
+mzr <- c(771.16, 777.18)
+
+a <- chromatogram(ftms, mz = mzr, aggregationFun = "max")
+plot(a, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/91390015-854c-49dd-a6f7-0c7931a93d94.png)
+
+```{r}
+mzr <- c(933.21, 933.23)
+
+a <- chromatogram(ftms, mz = mzr, aggregationFun = "max")
+plot(a, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/4aafc1b5-eeac-48bb-8ced-7fdf17124a3a.png)
+
+```{r}
+#| echo: true
+par(mfrow = c(2, 1))
+plot(bpc, col = paste0(col_sample_ftms, 80))
+grid()
+plot(bpc_adj, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/3476546c-35e1-42d6-80e7-cc7237a19024.png)
+
+Let's try (5,20) as a peak width parameter instead of (20,80)
+
+```{r}
+a_kn3 <- findChromPeaks(a_kn, CentWaveParam(peakwidth = c(5, 20), integrate = 2))
+
+```
+
+```{r}
+pks <- chromPeaks(a_kn3)
+head(pks)
+quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
+```
+
+```{r}
+par(mfrow = c(1, 2))
+#' In one sample
+plot(a_kn3[, 1], xlim = c(1390, 1450))
+#' In all samples
+plot(a_kn3[, 1:5], xlim = c(1390, 1450))
+```
+
+![](http://127.0.0.1:24279/graphics/f7bc04e5-7f2a-487f-9026-6b8d6676c7b9.png)
+
+```{r}
+plot(a_kn3[, 1], xlim = c(870, 1000))
+plot(a_kn3[, 1:5], xlim = c(870, 1000))
+```
+
+![](http://127.0.0.1:24279/graphics/bddd7dfb-3ee9-405b-80c2-f64bc055282f.png)
+
+```{r}
+ftms2 <- findChromPeaks(ftms, CentWaveParam(peakwidth = c(5, 20), integrate = 2),
+                       chunkSize = 2)
+```
+
+```{r}
+pks3 <- chromPeaks(ftms2)
+quantile(unname(pks3[, "rtmax"] - pks3[, "rtmin"]))
+quantile(unname(pks3[, "mzmax"] - pks3[, "mzmin"]))
+```
+
+```{r}
+mnpp2 <- MergeNeighboringPeaksParam(expandRt = 5.79, expandMz = 0.0001)
+ftms2 <- refineChromPeaks(ftms2, mnpp2)
+```
+
+```{r}
+pks3 <- chromPeaks(ftms2)
+quantile(unname(pks3[,"rtmax"] - pks3[,"rtmin"]))
+quantile(unname(pks3[,"mzmax"] - pks3[,"mzmin"]))
+```
+
+```{r}
+pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
+                        bw = 6, minFraction = 0.5)
+ftms2 <- groupChromPeaks(ftms2, param = pdp)
+```
+
+```{r}
+pgp <- PeakGroupsParam(
+    minFraction = 0.9,
+    extraPeaks = 100,
+    smooth = "loess",
+    span = 0.4,
+    family = "gaussian"
+)
+ftms2 <- adjustRtime(ftms2, param = pgp)
+```
+
+```{r}
+plotAdjustedRtime(ftms2, col = paste0(col_sample_ftms, 80))
+```
+
+![](http://127.0.0.1:24279/graphics/48ab8eb7-8616-48d7-b68a-c47633cce3bf.png){width="501"}
+
+```{r}
+bpc_adj2 <- chromatogram(ftms2, aggregationFun = "max", chromPeaks = "none")
+a_adj2 <- chromatogram(ftms2, aggregationFun = "max", mz = mzr)
+```
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/e1cfe032-a5aa-4ac9-8205-b336aa3591fb.png)
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc_adj2, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/6c7edd22-3e73-4eb7-bcee-9a056e88ccdf.png)
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc, col = paste0(col_sample_ftms, 80), xlim = c(400, 500))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/46e720a9-291f-4952-ade2-0049bc92edb5.png)
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc_adj2, col = paste0(col_sample_ftms, 80), xlim = c(400, 500))
+grid()
+```
+
+![](http://127.0.0.1:24279/graphics/cc7ee34c-0066-444e-b162-4a59cfe785e4.png)
+
+```{r}
+par(mfrow = c(2, 1))
+plot(a, col = paste0(col_sample_ftms, 80))
+grid()
+plot(a_adj2, col = paste0(col_sample_ftms, 80))
+grid()
+
+```
+
+![](http://127.0.0.1:24279/graphics/47179c5d-2974-425d-9249-fe5d3fc63851.png)
+
+```{r}
+#' Configure settings
+pdp <- PeakDensityParam(sampleGroups = sampleData(ftms2)$sample_id,
+                        bw = 2, minFraction = 0.5)
+
+#' Evaluate settings on the full range
+plotChromPeakDensity(a_adj, param = pdp, col = col_sample_ftms)
+```
+
+![](http://127.0.0.1:24279/graphics/dd768b4c-8a0c-4481-a0c9-13392213097d.png)
