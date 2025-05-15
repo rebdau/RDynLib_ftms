@@ -530,7 +530,7 @@ save(ftms, file = "data/ftms_glob.RData")
 ```
 
 ```{r}
-load(file = "data/ftms_glob.RData")
+load(file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_glob.RData")
 ```
 
 ```{r}
@@ -556,6 +556,65 @@ grid()
 
 dev.off()
 ```
+Now we will create the feature matrix of this data.
+
+```{r}
+corrected_features <- featureDefinitions(ftms)
+#here we add a new column called featue in this format "MxTy" with:
+#x: mzmed and y: rtmed of each feature
+
+final_feature_matrix <- data.frame(
+  `rt(min)` = corrected_features$rtmed / 60, 
+  mzmed = corrected_features$mzmed,         
+  feature_name = paste0(                     
+    "M", round(corrected_features$mzmed, 0), 
+    "T", round(corrected_features$rtmed, 0)
+  )
+)
+
+
+```
+
+```{r}
+
+
+feature_indices <- featureValues(ftms, value = "index")
+final_feature_matrix <- cbind(final_feature_matrix, feature_indices)
+
+#Here we add "compound_id" column that gives 
+#to each unique feature a unique identifier
+
+final_feature_matrix <- final_feature_matrix %>%
+  group_by(feature_name) %>%
+  mutate(compound_id = paste0("DYNLIB", sprintf("%08d", cur_group_id()))) %>%
+  ungroup()
+
+#Now we save the resulting feature matrix to a local folder
+
+output_path <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/Feature_matrix/feature_matrix_ftms.txt"
+write.table(
+  final_feature_matrix,
+  file = output_path,
+  sep = "\t",
+  row.names = FALSE,
+  quote = FALSE
+)
+
+
+```
+
+Now let's print the head of the resulting feature matrix
+
+```{r}
+head(final_feature_matrix)
+```
+
+```{r}
+nrow(final_feature_matrix)
+```
+
+
+
 
 # Session information
 
