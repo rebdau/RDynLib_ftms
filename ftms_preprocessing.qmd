@@ -28,9 +28,9 @@ register(SerialParam())
 now we import our dataset
 
 ```{r}
-sample_data_ftms <- read_xlsx("data/ftms_data_files.xlsx") |>
+sample_data_ftms <- read_xlsx("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_data_files.xlsx") |>
     as.data.frame()
-file <- "data/mzML/"
+file <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/mzML/"
 ftms <- readMsExperiment(paste0(file, sample_data_ftms$data_file),
                          sampleData = sample_data_ftms)
 ftms
@@ -77,9 +77,9 @@ This BPC shows that there is no signal detected after 1500s,
 We next clean the data set filtering to a retention time range of 0-1500 seconds.
 
 ```{r}
-#ftms <- filterSpectra(ftms, filterRt, c(10, 1500))
-#msLevel(spectra(ftms)) |>
-#  table()
+ftms <- filterSpectra(ftms, filterRt, c(10, 3500))
+msLevel(spectra(ftms)) |>
+ table()
 
 ```
 
@@ -526,11 +526,11 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = "data/ftms_glob.RData")
+save(ftms, file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final.RData")
 ```
 
 ```{r}
-load(file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_glob.RData")
+load(file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final.RData")
 ```
 
 ```{r}
@@ -564,7 +564,7 @@ corrected_features <- featureDefinitions(ftms)
 #x: mzmed and y: rtmed of each feature
 
 final_feature_matrix <- data.frame(
-  `rt(min)` = corrected_features$rtmed / 60, 
+ `rt(min)` = corrected_features$rtmed / 60, 
   mzmed = corrected_features$mzmed,         
   feature_name = paste0(                     
     "M", round(corrected_features$mzmed, 0), 
