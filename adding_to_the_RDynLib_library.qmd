@@ -29,16 +29,15 @@ register(SerialParam())
 first we load the XcmsExperiment ftms object
 
 ```{r}
-load(file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final2.RData")
+pth <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/"
+load(file = file.path(pth, "data/ftms_final.RData"))
 class(ftms)
 ```
 
 Next, we try "featureSpectra()" function on the ftms object.
 
 ```{r}
-
 ms2 <- featureSpectra(ftms, msLevel = 2)
-
 
 msLevel(ms2) |>
   table()
@@ -55,53 +54,77 @@ table(msLevel(s))
 
 this function takes as input the XcmsExperiment object, then it extract the MS2
 spectra using "featureSpectra()" function, after that we extract from the
-initial object only the MS3 fragments that have a parent ion in the result of 
+initial object only the MS3 fragments that have a parent ion in the result of
 "featureSpectra()" function, and then we do the same process for MS4.
 
 ```{r}
 ftms_all_levels <- function(ftms) {
-  
+
   ms2 <- featureSpectra(ftms, msLevel = 2)
   cat("Number of MS2 spectra found:", length(ms2), "\n")
-  
-  combined_spectra_list <- list() 
-  
-  for (origin in unique(spectraData(ms2)$dataOrigin)) {
+
+  res <- lapply(unique(ms2$dataOrigin), function(origin) {
     ms2_subset <- ms2[ms2$dataOrigin == origin]
-    
-    ms3 <- filterMsLevel(spectra(ftms), msLevel = 3)
-    ms3_filtered <- ms3[
-      ms3$dataOrigin == origin &
-      ms3$precScanNum %in% ms2_subset$scanIndex
-    ]
-    
-    ms4 <- filterMsLevel(spectra(ftms), msLevel = 4)
-    ms4_filtered <- ms4[
-      ms4$dataOrigin == origin &
-      ms4$precScanNum %in% ms3_filtered$scanIndex
-    ]
-    
+
+    ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
+    ## To support n:m matches
+    m <- findMatches(ms2_subset$acquisitionNum, ms3_filtered$precScanNum)
+    ms3_filtered <- ms3_filtered[to(m)]
+    ms3_filtered$feature_id <- ms2_subset$feature_id[from(m)]
+
+    ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
+    m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
+    ms4_filtered <- ms4_filtered[to(m)]
+    ms4_filtered$feature_id <- ms3_filtered$feature_id[from(m)]
+
     # Combine spectra for this origin
     combined_origin_spectra <- c(ms2_subset, ms3_filtered, ms4_filtered)
-    
-    # Only add if not empty
-    if (length(combined_origin_spectra) > 0) {
-      combined_spectra_list[[length(combined_spectra_list) + 1]] <-
-        combined_origin_spectra
-    }
-  }
-  
-
-    final_feature_data <- do.call(c, combined_spectra_list)
-
-  
-  return(final_feature_data)
+  })
+  do.call(c, res)
 }
 ftms_levels <- ftms_all_levels(ftms)
 class(ftms_levels)
 
 
 table(msLevel(ftms_levels))
+```
+
+Checking the MSn data for one feature - and evaluate if the relationship
+between the MSn spectra is correct.
+
+```{r}
+ft <- "FT4282"
+
+a <- ftms_levels[ftms_levels$feature_id == ft]
+a
+
+#' split by dataOrigin
+al <- split(a, a$dataOrigin)
+
+al[[1]]
+
+spectraData(al[[1]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
+#' This looks correct. Testing the next
+
+spectraData(al[[2]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
+#' This too.
+
+ft <- "FT0649"
+a <- ftms_levels[ftms_levels$feature_id == ft]
+a
+
+#' split by dataOrigin
+al <- split(a, a$dataOrigin)
+
+spectraData(al[[1]], columns = c("msLevel", "acquisitionNum", "precScanNum")) |>
+    as.data.frame()
+#' Looks correct. Let's see what filterPrecursorScan does
+
+filterPrecursorScan(al[[1]], 3851)
+filterPrecursorScan(al[[1]], 3870)
+filterPrecursorScan(al[[1]], 3905)
+filterPrecursorScan(al[[1]], 3919)
+#' Seems to be OK
 ```
 
 the resulting spectra object contains 1679 MS2, 1858 MS3, and 926 MS4.
@@ -116,7 +139,7 @@ spectraData(ftms_levels)
 
 ```{r}
 spectraData(ftms_levels)[!is.na(precScanNum(ftms_levels)), ]
-  
+
 ```
 
 The precScanNum is not empty for all spectra.
@@ -135,21 +158,21 @@ assign_msntree_id <- function(ftms_levels) {
   prec_scan_num <- precScanNum(ftms_levels)
   ms_level <- msLevel(ftms_levels)
   data_origin <- dataOrigin(ftms_levels)
-  
+
   tree_id <- rep(NA, length(scan_index))
   global_counter <- 0
-  
+
   for (origin in unique(data_origin)) {
     origin_indices <- which(data_origin == origin)
     origin_scan_index <- scan_index[origin_indices]
     origin_prec_scan_num <- prec_scan_num[origin_indices]
     origin_ms_level <- ms_level[origin_indices]
-    
+
     origin_tree_id <- rep(NA, length(origin_scan_index))
-    
+
     for (i in seq_along(origin_scan_index)) {
       if (origin_ms_level[i] == 4) {
-        
+
         parent_ms3 <- which(origin_scan_index == origin_prec_scan_num[i] & origin_ms_level == 3)
         if (length(parent_ms3) > 0) {
           parent_ms2 <- which(origin_scan_index == origin_prec_scan_num[parent_ms3] & origin_ms_level == 2)
@@ -158,7 +181,7 @@ assign_msntree_id <- function(ftms_levels) {
           }
         }
       } else if (origin_ms_level[i] == 3) {
-        
+
         parent_ms2 <- which(origin_scan_index == origin_prec_scan_num[i] & origin_ms_level == 2)
         if (length(parent_ms2) > 0) {
           origin_tree_id[i] <- origin_tree_id[parent_ms2]
@@ -170,14 +193,14 @@ assign_msntree_id <- function(ftms_levels) {
     }
     tree_id[origin_indices] <- origin_tree_id
   }
-  
+
   return(tree_id)
 }
 
 msntree_ids <- assign_msntree_id(ftms_levels)
 
 ftms_levels$MSntreeID <- msntree_ids
-spectraVariables(ftms_levels)  
+spectraVariables(ftms_levels)
 
 ```
 
@@ -202,7 +225,7 @@ df <- data.frame(
 )
 
 
-#here we take count the last level of each tree 
+#here we take count the last level of each tree
 library(dplyr)
 max_level_per_tree <- df %>%
   group_by(MSntreeID) %>%
@@ -226,36 +249,36 @@ head(feature_matrix)
 ```
 
 ```{r}
-#'below my old function that select the longest tree 
+#'below my old function that select the longest tree
 #'+ the highest MS2 precursor intensity if we have more then one longest tree
 #'but here we need feature name!
 
 filtered_trees <- function(db){
-  
+
   feat.block <- split(db, f = db$feature_name)
   selection <- function(feature.block) {
-    
+
     max.number <- max(table(feature.block$MSntreeID))
     FTmax <- names(table(feature.block$MSntreeID))[table(feature.block$MSntreeID) == max.number]
     feat.block.sel1 <- feature.block[feature.block$MSntreeID %in% as.numeric(FTmax),]
-    
-    
+
+
     feat.block.sel1.MS2 <- feat.block.sel1[feat.block.sel1$msLevel == 2,]
     index <- order(feat.block.sel1.MS2$precursorIntensity, decreasing = TRUE)[1]
     selected.FT <- feat.block.sel1.MS2$MSntreeID[index]
     feature.block[feature.block$MSntreeID == selected.FT,]
   }
-  
-  
+
+
   selected.trees.list <- lapply(feat.block, FUN = selection)
-  
+
   selected.trees <- do.call(rbind, selected.trees.list)
-  
+
   selected_trees_result <- selected.trees[, c("feature_name", "MSntreeID")]
-  
+
   db <- db %>%
     filter(MSntreeID %in% selected_trees_result$MSntreeID)
-  
+
   cat("Base de données filtrée avec succès!\n")
   return(db)
 }
@@ -268,4 +291,3 @@ filtered_trees <- function(db){
 
 
 ```
-

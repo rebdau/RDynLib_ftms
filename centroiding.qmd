@@ -107,7 +107,9 @@ for (f in fls) {
 
 b <- Spectra(fn)
 all(centroided(b))
-
+all.equal(a$acquisitionNum, b$acquisitionNum)
+all.equal(a$precScanNum, b$precScanNum)
+all.equal(a$scanIndex, b$scanIndex)
 ```
 
 # Questions and notes
