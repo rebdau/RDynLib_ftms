@@ -36,6 +36,8 @@ ftms <- readMsExperiment(paste0(file, sample_data_ftms$data_file),
 ftms
 ```
 
+
+
 ```{r}
 sample_data_ftms
 ```
@@ -526,16 +528,22 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final.RData")
+save(ftms, file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final2.RData")
 ```
 
 ```{r}
-load(file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final.RData")
+load(file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final2.RData")
 ```
 
 ```{r}
 nrow(featureDefinitions(ftms))
 ```
+
+```{r}
+msLevel(spectra(ftms)) |>
+  table()
+```
+
 
 We next save the raw and adjusted BPC to a image file.
 

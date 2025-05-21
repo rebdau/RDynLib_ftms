@@ -122,7 +122,7 @@ spectraData(ftms_levels)[!is.na(precScanNum(ftms_levels)), ]
 The precScanNum is not empty for all spectra.
 
 ```{r}
-spectraData(all_ftms)[!is.na(precScanNum(all_ftms)), ]
+
 
 ```
 
