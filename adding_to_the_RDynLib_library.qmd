@@ -1,16 +1,15 @@
 ---
-title: "Untitled"
-format: html
-server: shiny
+title: "Selecting one representative tree per feature"
+format:
+  html:
+    toc: true
+    self-contained: true
+author: "Ahlam Mentag, Johannes Rainer"
 ---
 
 ## Shiny Documents
-
-This Quarto document is made interactive using Shiny. Interactive documents allow readers to modify parameters and see the results immediately. Learn more about Shiny interactive documents at <https://quarto.org/docs/interactive/shiny/>.
-
-## Inputs and Outputs
-
-You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change. This demonstrates how a standard R plot can be made interactive:
+This Quarto document presents the analysis of FTMS flaxseed data for selecting 
+one representative tree per feature.
 
 ```{r}
 library(MsExperiment)
@@ -30,7 +29,7 @@ first we load the XcmsExperiment ftms object
 
 ```{r}
 pth <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/"
-load(file = file.path(pth, "data/ftms_final.RData"))
+load(file = file.path(pth, "data/ftms_final2.RData"))
 class(ftms)
 ```
 
@@ -69,21 +68,25 @@ ftms_all_levels <- function(ftms) {
     ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
     ## To support n:m matches
     m <- findMatches(ms2_subset$acquisitionNum, ms3_filtered$precScanNum)
+    cat("Number of MS3 matched to MS2:", length(m), "\n")
     ms3_filtered <- ms3_filtered[to(m)]
     ms3_filtered$feature_id <- ms2_subset$feature_id[from(m)]
 
     ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
     m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
+   
     ms4_filtered <- ms4_filtered[to(m)]
     ms4_filtered$feature_id <- ms3_filtered$feature_id[from(m)]
 
     # Combine spectra for this origin
-    combined_origin_spectra <- c(ms2_subset, ms3_filtered, ms4_filtered)
+    c(ms2_subset, ms3_filtered, ms4_filtered)
   })
-  do.call(c, res)
+    do.call(c, res)
+ 
 }
+
+
 ftms_levels <- ftms_all_levels(ftms)
-class(ftms_levels)
 
 
 table(msLevel(ftms_levels))
@@ -129,27 +132,17 @@ filterPrecursorScan(al[[1]], 3919)
 
 the resulting spectra object contains 1679 MS2, 1858 MS3, and 926 MS4.
 
-```{r}
 
-```
 
 ```{r}
 spectraData(ftms_levels)
 ```
 
-```{r}
-spectraData(ftms_levels)[!is.na(precScanNum(ftms_levels)), ]
 
-```
 
-The precScanNum is not empty for all spectra.
 
-```{r}
-spectraData(all_ftms)[!is.na(precScanNum(all_ftms)), ]
 
-```
-
-This function create MSntreeID column that gouped related scans into
+This function creates MSntreeID column that gouped related scans into
 fragmentation trees based on their parent-child relationships.
 ```{r}
 
@@ -215,8 +208,11 @@ length(unique(msntree_ids))
 
 we have 1679 fragmentation tree.
 
+
+
+
 ```{r}
-# we stored the tree ids and the msLevels into a dataframe
+# we stored the tree ids and the msLevels to a dataframe
 tree_ids <- ftms_levels$MSntreeID
 ms_levels <- msLevel(ftms_levels)
 df <- data.frame(
@@ -242,52 +238,79 @@ The number of trees that go up to MS4 level is : 926
 
 
 
-```{r}
-
-feature_matrix <- read.table("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/Feature_matrix/feature_matrix_ftms.txt", sep = "\t", header = TRUE)
-head(feature_matrix)
-```
+Next we select one most representative tree per feature based on the longest one
+and if we have many, we select one tree with the highest MS2 precursor intensity
 
 ```{r}
-#'below my old function that select the longest tree
-#'+ the highest MS2 precursor intensity if we have more then one longest tree
-#'but here we need feature name!
+library(Spectra)
+library(dplyr)
 
-filtered_trees <- function(db){
+filtered_trees_spectra <- function(db) {
+  
+  # Extract metadata from the Spectra object
+  sps_data <- spectraData(db)
 
-  feat.block <- split(db, f = db$feature_name)
-  selection <- function(feature.block) {
+  # Split by feature_id
+  feat_block <- split(sps_data, f = sps_data$feature_id)
 
-    max.number <- max(table(feature.block$MSntreeID))
-    FTmax <- names(table(feature.block$MSntreeID))[table(feature.block$MSntreeID) == max.number]
-    feat.block.sel1 <- feature.block[feature.block$MSntreeID %in% as.numeric(FTmax),]
-
-
-    feat.block.sel1.MS2 <- feat.block.sel1[feat.block.sel1$msLevel == 2,]
-    index <- order(feat.block.sel1.MS2$precursorIntensity, decreasing = TRUE)[1]
-    selected.FT <- feat.block.sel1.MS2$MSntreeID[index]
-    feature.block[feature.block$MSntreeID == selected.FT,]
+  # Selection function applied to each feature block
+  selection <- function(feature_block) {
+    #Select the most frequent MSnTreeID
+    max_number <- max(table(feature_block$MSntreeID))
+    FTmax <- names(table(feature_block$MSntreeID))[table(feature_block$MSntreeID) == max_number]
+    feat_block_sel1 <- feature_block[feature_block$MSntreeID %in% as.numeric(FTmax), ]
+    feat_block_sel1_MS2 <- feat_block_sel1[feat_block_sel1$msLevel == 2, ]
+    
+    if (nrow(feat_block_sel1_MS2) == 0) return(NULL)
+    #Select the one with the highest MS2 precursor Intensity 
+    index <- order(feat_block_sel1_MS2$precursorIntensity, decreasing = TRUE)[1]
+    selected_FT <- feat_block_sel1_MS2$MSntreeID[index]
+    feature_block[feature_block$MSntreeID == selected_FT, ]
   }
 
+  # Apply selection across all feature blocks
+  selected_trees_list <- lapply(feat_block, selection)
+  selected_trees_df <- do.call(rbind, selected_trees_list)
 
-  selected.trees.list <- lapply(feat.block, FUN = selection)
+  # Subset the original spectra object
+  selected_sps <- db[db$MSntreeID %in% selected_trees_df$MSntreeID]
 
-  selected.trees <- do.call(rbind, selected.trees.list)
-
-  selected_trees_result <- selected.trees[, c("feature_name", "MSntreeID")]
-
-  db <- db %>%
-    filter(MSntreeID %in% selected_trees_result$MSntreeID)
-
-  cat("Base de données filtrée avec succès!\n")
-  return(db)
+  cat("Spectra object filtré avec succès!\n")
+  return(selected_sps)
 }
 
+
+ftms_one_tree <- filtered_trees_spectra(ftms_levels)
+
+msLevel(ftms_one_tree) |> table()
+
+```
+
+after selecting one representative tree per feature we have now:
+MS2 : 437, MS3 : 523, MS4 : 262
+
+
+Finally we verify if the number of unique features corresponds to the number of 
+unique MSntreeID to ensure that we have one tree per feature.
+```{r}
+length(unique(ftms_one_tree$feature_id))
 ```
 
 
 ```{r}
-
-
-
+length(unique(ftms_one_tree$MSntreeID))
 ```
+
+we have 437 unique feature and unique MSntreeID, That's mean that we have for 
+each feature one representative tree.
+
+
+Now we save the resulting ftms spectra object to a local directory.
+```{r}
+save(ftms_one_tree, file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/qtof.RData")
+```
+
+
+
+
+
