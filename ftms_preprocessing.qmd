@@ -1,0 +1,657 @@
+---
+title: "Preprocessing of the FTMS LC-MS/MS data"
+format: html
+server: shiny
+editor_options:
+  chunk_output_type: inline
+---
+
+## Shiny Documents
+
+In this document, we present all the main steps for analyzing FTMS data,
+including data visualization, preprocessing, XCMS processing, and retention time
+alignment. We also plotted the extracted ion chromatograms of some known
+compounds.
+
+```{r}
+library(MsExperiment)
+library(Spectra)
+library(dplyr)
+library(tidyr)
+library(BiocParallel)
+library(xcms)
+library(MsExperiment)
+library(Spectra)
+library(readxl)
+library(pander)
+library(pheatmap)
+register(SerialParam())
+```
+
+now we import our dataset
+
+```{r}
+pth <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms"
+sample_data_ftms <- read_xlsx(file.path(pth, "data/ftms_data_files.xlsx")) |>
+    as.data.frame()
+file <- file.path(pth, "data/mzML/")
+ftms <- readMsExperiment(paste0(file, sample_data_ftms$data_file),
+                         sampleData = sample_data_ftms)
+ftms
+```
+
+```{r}
+sample_data_ftms
+```
+
+```{r}
+pandoc.table(as.data.frame(sampleData(ftms)), caption = "Data files",
+             split.table = Inf, style = "rmarkdown")
+```
+
+```{r}
+msLevel(spectra(ftms)) |>
+  table()
+```
+
+Defining colors for each sample
+
+```{r}
+library(RColorBrewer)
+# colors
+col_sample_ftms_id <- brewer.pal(9, "Set1")[c(1, 2)]
+names(col_sample_ftms_id) <- unique(sample_data_ftms$sample_id)
+# Assigne colors for each single name in the sample_id
+names(col_sample_ftms_id) <- c("S1", "S9")
+col_sample_ftms <- col_sample_ftms_id[sample_data_ftms$sample_id]
+```
+
+BPC Chromatogram
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+bpc0 <- chromatogram(ftms, aggregationFun = "max")
+plot(bpc0, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+No large peaks can be seen after 1500 seconds. Extracted ion chromatograms of
+known compounds however showed signal up to 3500 seconds. Thus, we filter the
+dataset to this retention time range.
+
+```{r}
+ftms <- filterSpectra(ftms, filterRt, c(10, 3500))
+msLevel(spectra(ftms)) |>
+ table()
+
+```
+
+This data contains 4 MS levels but with empty spectra so we removed them using
+`filterEmptySpectra()` function
+
+```{r}
+ftms <- filterSpectra(ftms, filterEmptySpectra)
+msLevel(spectra(ftms)) |>
+  table()
+```
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+bpc0 <- chromatogram(ftms, aggregationFun = "max")
+plot(bpc0, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+We next extract a total ion chromatogram (TIC) and base peak chromatogram (BPC)
+and calculate the similarities between these to evaluate similarity in the
+performance of the liquid chromatography.
+
+```{r}
+#' Extract TIC
+tic <- chromatogram(ftms, aggregationFun = "sum")
+#' Bin the signal
+ticb <- bin(tic, binSize = 150)
+
+ticmap <- ticb |>
+    lapply(intensity) |>
+    do.call(what = rbind) |>
+    log2()
+
+colnames(ticmap) <- rtime(ticb[[1]])
+rownames(ticmap) <- sampleData(ftms)$sample_name
+
+#' Center the data per bin by subtracting the median
+ticmap <- scale(ticmap, center = TRUE, scale = FALSE)
+
+ann <- data.frame(sample_id = sampleData(ftms)[, "sample_id"])
+rownames(ann) <- rownames(ticmap)
+
+pheatmap(ticmap, cluster_cols = FALSE,
+         annotation_colors = list(sample_id = col_sample_ftms_id),
+         annotation_row = ann)
+```
+
+This heatmap shows that S9 samples are better grouped compared with the S1
+samples?
+
+Now we plot the tic
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+plot(tic, col = paste0(col_sample_ftms, 80), main = "TIC")
+grid()
+```
+
+We repeat this analysis also for the BPC.
+
+```{r}
+#' Extract BPC
+bpc <- chromatogram(ftms, aggregationFun = "sum")
+#' Bin the signal
+bpcb <- bin(bpc, binSize = 150)
+
+bpcmap <- bpcb |>
+    lapply(intensity) |>
+    do.call(what = rbind) |>
+    log2()
+
+colnames(bpcmap) <- rtime(bpcb[[1]])
+rownames(bpcmap) <- sampleData(ftms)$sample_name
+
+#' Center the data per bin by subtracting the median
+bpcmap <- scale(bpcmap, center = TRUE, scale = FALSE)
+pheatmap(bpcmap, cluster_cols = FALSE,
+         annotation_colors = list(sample_ftms_id = col_sample_ftms_id),
+         annotation_row = ann)
+```
+
+No clear grouping of the BPC by sample type (seed) can be observed.
+
+Now we plot the BPC again
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+plot(bpc, col = paste0(col_sample_ftms, 80), main = "BPC")
+grid()
+```
+
+# Data preprocessing
+
+here we take an mz range of an known compound
+
+```{r}
+mzr <- c(287.04, 287.06)
+
+a_kn <- chromatogram(ftms, mz = mzr, aggregationFun = "max")
+plot(a_kn, col = paste0(col_sample_ftms, 80))
+grid()
+
+```
+
+we zoom into a small retention time range that contains the highest peak signal
+
+```{r}
+#' Focus on the retention time range with the highest signal
+plot(a_kn, xlim = c(1300, 1500))
+grid()
+
+#' Plot it for a single sample
+plot(a_kn[, 1], xlim = c(1300, 1500))
+grid()
+```
+
+```{r}
+tmp <- filterMz(ftms, mz = mzr) |>
+    filterRt(rt = c(1400, 1440))
+plot(tmp[1])
+```
+
+Here we do the same thing as qtof to choose the peakwidth parameter, but here we
+used the ion chromatogram of a known compound, its width is about 40 seconds so
+we take the half and the double that’s mean 20 and 80 as a parameter window.
+
+Next we run the chromatographic peak detection on that extracted ion
+chromatogram.
+
+```{r}
+a_kn2 <- findChromPeaks(a_kn, CentWaveParam(peakwidth = c(20, 80), integrate = 2))
+
+```
+
+```{r}
+pks <- chromPeaks(a_kn2)
+head(pks)
+quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
+```
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+par(mfrow = c(1, 2))
+#' In one sample
+plot(a_kn2[, 1], xlim = c(1390, 1450))
+grid()
+#' In all samples
+plot(a_kn2[, 1:5], xlim = c(1390, 1450))
+grid()
+```
+
+the same on another retention time range
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+par(mfrow = c(1, 2))
+plot(a_kn2[, 1], xlim = c(870, 1000))
+grid()
+plot(a_kn2[, 1:5], xlim = c(870, 1000))
+grid()
+```
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+par(mfrow = c(1, 2))
+plot(a_kn2[, 1], xlim = c(0, 500))
+grid()
+plot(a_kn2[, 1:5], xlim = c(0, 500))
+grid()
+```
+
+Eventually we could try another m/z range...
+
+```{r}
+plot(bpc)
+grid()
+abline(v = c(1020, 1100), col = "grey")
+plot(bpc[, 1], xlim = c(1020, 1100))
+```
+
+Below we extract the ion chromatogram for this m/z range.
+
+```{r}
+mzr <- c(287.04, 287.06)
+
+a <- chromatogram(ftms, mz = mzr, aggregationFun = "max")
+plot(a, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+This m/z range seems to contain signal from several ions, eluting at different
+retention times. We next focus on a retention time range to inspect the signal
+from a single ion.
+
+```{r}
+plot(a, col = paste0(col_sample_ftms, 80), xlim = c(1400, 1500))
+grid()
+```
+
+We next perform the chromatographic peak detection using the centWave
+algorithm. With integrate = 2 we use an alternative algorithm to correctly
+identify the boundaries of the identified chromatographic peaks. Parameter
+chunkSize is used to control the number of files from which the data should be
+loaded into memory at a time.
+
+```{r}
+ftms <- findChromPeaks(ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2),
+                       chunkSize = 2)
+```
+
+With this setting we identified `r nrow(chromPeaks(ftms))` peaks in the full
+data set. The number of peaks per sample are:
+
+```{r}
+pks <- chromPeaks(ftms)
+table(pks[, "sample"])
+```
+
+The distribution of the peak widths in retention time and in m/z dimensions are:
+
+```{r}
+quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
+quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
+```
+
+We next perform the chromatographic peak refinement to reduce the number of
+potential centWave-specific peak detection artifacts. We choose settings that
+depend on the observed peak widths above (i.e. half of the observed average
+widths).
+
+```{r}
+mnpp <- MergeNeighboringPeaksParam(expandRt = 9.67525, expandMz = 0.0006)
+ftms <- refineChromPeaks(ftms, mnpp)
+```
+
+We evaluate the number of peaks and the observed peak widths also after
+refinement.
+
+```{r}
+pks <- chromPeaks(ftms)
+table(pks[, "sample"])
+quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
+quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
+```
+
+We next perform an initial correspondence analysis that is needed for the
+subsequent retention time alignment. We evaluate the settings on the example m/z
+range from above.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+#' Extract the ion chromatogram again.
+a_2 <- chromatogram(ftms, aggregationFun = "max", mz = mzr)
+
+#' Configure settings
+
+pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
+                        bw = 6, minFraction = 0.5)
+
+#' Evaluate settings on the full range
+plotChromPeakDensity(
+    a_2, param = pdp, col = paste0(col_sample_ftms, 80),
+    peakCol = paste0(col_sample_ftms[chromPeaks(a_2)[, "sample"]], 80),
+    peakBg = paste0(col_sample_ftms[chromPeaks(a_2)[, "sample"]], 40),
+    peakPch = 16)
+grid()
+```
+
+now we will focus on a smaller retention time range
+
+```{r}
+a_sub <- filterRt(a_2, rt = c(1300, 1500))
+plotChromPeakDensity(
+    a_sub, param = pdp,
+    peakCol = paste0(col_sample_ftms[chromPeaks(a_sub)[, "sample"]], 80),
+    peakBg = paste0(col_sample_ftms[chromPeaks(a_sub)[, "sample"]], 40),
+    peakPch = 16)
+grid()
+```
+
+```{r}
+ftms <- groupChromPeaks(ftms, param = pdp)
+```
+
+we next perform retention time alignment
+
+```{r}
+pgp <- PeakGroupsParam(
+    minFraction = 0.9,
+    extraPeaks = 100,
+    smooth = "loess",
+    span = 0.4,
+    family = "gaussian"
+)
+ftms <- adjustRtime(ftms, param = pgp)
+```
+
+Below we plot the results from the retention time alignment, i.e., the
+difference between the original and adjusted retention times (y-axis) along the
+retention time axis (x-axis).
+
+```{r}
+plotAdjustedRtime(ftms, col = paste0(col_sample_ftms, 80))
+```
+
+we can see from the plot above that there is one sample that has been largely adjusted, so it goes up to 15 seconds.
+
+```{r}
+bpc_adj <- chromatogram(ftms, aggregationFun = "max")
+#' Calculate similarity (Pearson correlation) between BPCs
+#' Bin the signal
+bpcb <- bin(bpc_adj, binSize = 150)
+
+bpcmap <- bpcb |>
+    lapply(intensity) |>
+    do.call(what = rbind)
+
+bpcmap[bpcmap <= 0] <- NA
+
+bpcmap <- log2(bpcmap)
+
+colnames(bpcmap) <- rtime(bpcb[[1]])
+rownames(bpcmap) <- sampleData(ftms)$sample_name
+
+#' Center the data per bin by subtracting the median
+bpcmap <- scale(bpcmap, center = TRUE, scale = FALSE)
+pheatmap(bpcmap, cluster_cols = FALSE,
+         annotation_colors = list(sample_ftms_id = col_sample_ftms_id),
+         annotation_row = ann)
+```
+
+The samples don't group perfectly by sample group. 3 samples (S1R5, S9R4 and
+S9R5) show higher signal from 1500 to the end of the chromatography. This might represent background signal/noise.
+
+Now we can visualize the changes before and after retention time alignment
+
+```{r}
+bpc_adj <- chromatogram(ftms, aggregationFun = "max", chromPeaks = "none")
+a_adj <- chromatogram(ftms, aggregationFun = "max", mz = mzr)
+```
+
+We first plot the BPC of the original data and then of the data after retention time alignment.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 10
+
+par(mfrow = c(2, 1))
+plot(bpc0, col = paste0(col_sample_ftms, 80), main = "raw")
+grid()
+plot(bpc_adj, col = paste0(col_sample_ftms, 80),
+     main = "retention time adjusted")
+grid()
+
+```
+
+And we plot them also separately
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc0, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc_adj, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+the data looks well aligned, next we need to visualize the alignment result on a smaller retention time range
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc0, col = paste0(col_sample_ftms, 80), xlim = c(400, 500))
+grid()
+
+```
+
+```{r}
+par(mfrow = c(1, 1))
+plot(bpc_adj, col = paste0(col_sample_ftms, 80), xlim = c(400, 500))
+grid()
+```
+
+the data looks well aligned, From this results we can conclude that retention time alignment works well on this data.
+
+We in addition evaluate the signal for the example m/z range.
+
+```{r}
+par(mfrow = c(2, 1))
+plot(a_2, col = paste0(col_sample_ftms, 80))
+grid()
+plot(a_adj, col = paste0(col_sample_ftms, 80))
+grid()
+```
+
+the data seems to be better aligned. Finally, we zoom into a retention time window from 1300 to 1500 seconds.
+
+```{r}
+par(mfrow = c(2, 1))
+plot(a_2, col = paste0(col_sample_ftms, 80), peakType = "none",
+     xlim = c(1300, 1500))
+plot(a_adj, col = paste0(col_sample_ftms, 80),
+     xlim = c(1300, 1500), peakType = "none")
+```
+
+We can thus conclude that the settings for the retention time alignment worked
+on the present data set. We continue the preprocessing with the final
+correspondence analysis. We adapt now the settings, in particular the bw
+parameter, that can be much stricter because of the properly aligned data
+set. Again, we test the settings on the extracted ion signal.
+
+```{r}
+#' Configure settings
+pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
+                        bw = 2, minFraction = 0.5)
+
+#' Evaluate settings on the full range
+plotChromPeakDensity(a_adj, param = pdp, col = col_sample_ftms)
+```
+
+we zoom into a smaller region with multiple peaks
+
+```{r}
+a_adj_2 <- filterRt(a_adj, c(800, 1500))
+plotChromPeakDensity(a_adj_2, param = pdp, col = col_sample_ftms)
+```
+
+```{r}
+a_adj_2 <- filterRt(a_adj, c(1250, 1450))
+plotChromPeakDensity(a_adj_2, param = pdp, col = col_sample_ftms)
+
+```
+
+now we group chromatographic peak
+
+```{r}
+ftms <- groupChromPeaks(ftms, param = pdp)
+```
+
+As a final step we next perform gap-filling to reduce the number of missing
+values in the data set.
+
+```{r}
+#' The number of missing values before gap filling
+sum(is.na(featureValues(ftms)))
+head(featureValues(ftms))
+```
+
+```{r}
+#' Perform gap-filling
+ftms <- fillChromPeaks(ftms, param = ChromPeakAreaParam())
+```
+
+```{r}
+sum(is.na(featureValues(ftms)))
+head(featureValues(ftms))
+```
+
+```{r}
+#' Save the result object
+save(ftms, file = file.path(pth, "data/ftms_final.RData"))
+```
+
+```{r}
+load(file = file.path(pth, "data/ftms_final.RData"))
+```
+
+```{r}
+nrow(featureDefinitions(ftms))
+```
+
+We next save the raw and adjusted BPC to a image file.
+
+```{r}
+
+#' Define the file path where to save the image
+dr <- "images/ftms_glob/"
+dir.create(dr, showWarnings = FALSE, recursive = TRUE)
+png(file.path(dr, "ftms-bpc-aligned.png"), width = 14, height = 10,
+    units = "cm", res = 600, pointsize = 4)
+
+par(mfrow = c(2, 1))
+plot(bpc0, col = paste0(col_sample_ftms, 80), main = "Raw data")
+grid()
+plot(bpc_adj, col = paste0(col_sample_ftms, 80),
+     main = "Retention time aligned")
+grid()
+
+dev.off()
+```
+Now we will create the feature matrix of this data.
+
+```{r}
+corrected_features <- featureDefinitions(ftms)
+#here we add a new column called featue in this format "MxTy" with:
+#x: mzmed and y: rtmed of each feature
+
+final_feature_matrix <- data.frame(
+ `rt(min)` = corrected_features$rtmed / 60,
+  mzmed = corrected_features$mzmed,
+  feature_name = paste0(
+    "M", round(corrected_features$mzmed, 0),
+    "T", round(corrected_features$rtmed, 0)
+  )
+)
+
+
+```
+
+```{r}
+
+
+feature_indices <- featureValues(ftms, value = "index")
+final_feature_matrix <- cbind(final_feature_matrix, feature_indices)
+
+#Here we add "compound_id" column that gives
+#to each unique feature a unique identifier
+
+final_feature_matrix <- final_feature_matrix %>%
+  group_by(feature_name) %>%
+  mutate(compound_id = paste0("DYNLIB", sprintf("%08d", cur_group_id()))) %>%
+  ungroup()
+
+#Now we save the resulting feature matrix to a local folder
+
+output_path <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/Feature_matrix/feature_matrix_ftms.txt"
+write.table(
+  final_feature_matrix,
+  file = output_path,
+  sep = "\t",
+  row.names = FALSE,
+  quote = FALSE
+)
+
+
+```
+
+Now let's print the head of the resulting feature matrix
+
+```{r}
+head(final_feature_matrix)
+```
+
+```{r}
+nrow(final_feature_matrix)
+```
+
+
+
+
+# Session information
+
+The R version and package versions used for this analysis were:
+
+```{r}
+sessionInfo()
+```
