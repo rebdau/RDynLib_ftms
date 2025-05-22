@@ -1,5 +1,5 @@
 ---
-title: "Preprocessing of the FTMS LC-MS/MS data"
+title: "Untitled"
 format: html
 server: shiny
 editor_options:
@@ -8,10 +8,7 @@ editor_options:
 
 ## Shiny Documents
 
-In this document, we present all the main steps for analyzing FTMS data,
-including data visualization, preprocessing, XCMS processing, and retention time
-alignment. We also plotted the extracted ion chromatograms of some known
-compounds.
+In this document, we present all the main steps for analyzing FTMS data, including data visualization, preprocessing, XCMS processing, and retention time alignment. We also plotted the extracted ion chromatograms of some known compounds.
 
 ```{r}
 library(MsExperiment)
@@ -31,14 +28,15 @@ register(SerialParam())
 now we import our dataset
 
 ```{r}
-pth <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms"
-sample_data_ftms <- read_xlsx(file.path(pth, "data/ftms_data_files.xlsx")) |>
+sample_data_ftms <- read_xlsx("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_data_files.xlsx") |>
     as.data.frame()
-file <- file.path(pth, "data/mzML/")
+file <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/mzML/"
 ftms <- readMsExperiment(paste0(file, sample_data_ftms$data_file),
                          sampleData = sample_data_ftms)
 ftms
 ```
+
+
 
 ```{r}
 sample_data_ftms
@@ -76,9 +74,9 @@ plot(bpc0, col = paste0(col_sample_ftms, 80))
 grid()
 ```
 
-No large peaks can be seen after 1500 seconds. Extracted ion chromatograms of
-known compounds however showed signal up to 3500 seconds. Thus, we filter the
-dataset to this retention time range.
+This BPC shows that there is no signal detected after 1500s,
+
+We next clean the data set filtering to a retention time range of 0-1500 seconds.
 
 ```{r}
 ftms <- filterSpectra(ftms, filterRt, c(10, 3500))
@@ -87,8 +85,7 @@ msLevel(spectra(ftms)) |>
 
 ```
 
-This data contains 4 MS levels but with empty spectra so we removed them using
-`filterEmptySpectra()` function
+This data contains 4 MS levels but with empty spectra so we removed them using `filterEmptySpectra()` function
 
 ```{r}
 ftms <- filterSpectra(ftms, filterEmptySpectra)
@@ -104,9 +101,7 @@ plot(bpc0, col = paste0(col_sample_ftms, 80))
 grid()
 ```
 
-We next extract a total ion chromatogram (TIC) and base peak chromatogram (BPC)
-and calculate the similarities between these to evaluate similarity in the
-performance of the liquid chromatography.
+We next extract a total ion chromatogram (TIC) and base peak chromatogram (BPC) and calculate the similarities between these to evaluate similarity in the performance of the liquid chromatography.
 
 ```{r}
 #' Extract TIC
@@ -133,8 +128,7 @@ pheatmap(ticmap, cluster_cols = FALSE,
          annotation_row = ann)
 ```
 
-This heatmap shows that S9 samples are better grouped compared with the S1
-samples?
+This heatmap shows that S9 samples are better grouped compared with the S1 samples?
 
 Now we plot the tic
 
@@ -168,7 +162,7 @@ pheatmap(bpcmap, cluster_cols = FALSE,
          annotation_row = ann)
 ```
 
-No clear grouping of the BPC by sample type (seed) can be observed.
+This bpc heatmap is like the tic heatmap, it shows that S9 samples are better grouped compared with the S1 samples?
 
 Now we plot the BPC again
 
@@ -210,12 +204,9 @@ tmp <- filterMz(ftms, mz = mzr) |>
 plot(tmp[1])
 ```
 
-Here we do the same thing as qtof to choose the peakwidth parameter, but here we
-used the ion chromatogram of a known compound, its width is about 40 seconds so
-we take the half and the double that’s mean 20 and 80 as a parameter window.
+Here we do the same thing as qtof to choose the peakwidth parameter, but here we used the ion chromatogram of a known compound, its width is about 40 seconds so we take the half and the double that’s mean 20 and 80 as a parameter window.
 
-Next we run the chromatographic peak detection on that extracted ion
-chromatogram.
+Next we run the chromatographic peak detection on that extracted ion chromatogram
 
 ```{r}
 a_kn2 <- findChromPeaks(a_kn, CentWaveParam(peakwidth = c(20, 80), integrate = 2))
@@ -284,28 +275,21 @@ plot(a, col = paste0(col_sample_ftms, 80))
 grid()
 ```
 
-This m/z range seems to contain signal from several ions, eluting at different
-retention times. We next focus on a retention time range to inspect the signal
-from a single ion.
+This m/z range seems to contain signal from several ions, eluting at different retention times. We next focus on a retention time range to inspect the signal from a single ion.
 
 ```{r}
 plot(a, col = paste0(col_sample_ftms, 80), xlim = c(1400, 1500))
 grid()
 ```
 
-We next perform the chromatographic peak detection using the centWave
-algorithm. With integrate = 2 we use an alternative algorithm to correctly
-identify the boundaries of the identified chromatographic peaks. Parameter
-chunkSize is used to control the number of files from which the data should be
-loaded into memory at a time.
+We next perform the chromatographic peak detection using the centWave algorithm. With integrate = 2 we use an alternative algorithm to correctly identify the boundaries of the identified chromatographic peaks. Parameter chunkSize is used to control the number of files from which the data should be loaded into memory at a time.
 
 ```{r}
 ftms <- findChromPeaks(ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2),
                        chunkSize = 2)
 ```
 
-With this setting we identified `r nrow(chromPeaks(ftms))` peaks in the full
-data set. The number of peaks per sample are:
+With this setting we identified `r nrow(chromPeaks(ftms))` peaks in the full data set. The number of peaks per sample are:
 
 ```{r}
 pks <- chromPeaks(ftms)
@@ -319,18 +303,14 @@ quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
 quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
 ```
 
-We next perform the chromatographic peak refinement to reduce the number of
-potential centWave-specific peak detection artifacts. We choose settings that
-depend on the observed peak widths above (i.e. half of the observed average
-widths).
+We next perform the chromatographic peak refinement to reduce the number of potential centWave-specific peak detection artifacts. We choose settings that depend on the observed peak widths above (i.e. half of the observed average widths).
 
 ```{r}
 mnpp <- MergeNeighboringPeaksParam(expandRt = 9.67525, expandMz = 0.0006)
 ftms <- refineChromPeaks(ftms, mnpp)
 ```
 
-We evaluate the number of peaks and the observed peak widths also after
-refinement.
+We evaluate the number of peaks and the observed peak widths also after refinement.
 
 ```{r}
 pks <- chromPeaks(ftms)
@@ -339,9 +319,7 @@ quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
 quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
 ```
 
-We next perform an initial correspondence analysis that is needed for the
-subsequent retention time alignment. We evaluate the settings on the example m/z
-range from above.
+We next perform an initial correspondence analysis that is needed for the subsequent retention time alignment. We evaluate the settings on the example m/z range from above.
 
 ```{r}
 #| fig-width: 10
@@ -393,9 +371,7 @@ pgp <- PeakGroupsParam(
 ftms <- adjustRtime(ftms, param = pgp)
 ```
 
-Below we plot the results from the retention time alignment, i.e., the
-difference between the original and adjusted retention times (y-axis) along the
-retention time axis (x-axis).
+Below we plot the results from the retention time alignment, i.e., the difference between the original and adjusted retention times (y-axis) along the retention time axis (x-axis).
 
 ```{r}
 plotAdjustedRtime(ftms, col = paste0(col_sample_ftms, 80))
@@ -413,7 +389,7 @@ bpcmap <- bpcb |>
     lapply(intensity) |>
     do.call(what = rbind)
 
-bpcmap[bpcmap <= 0] <- NA
+bpcmap[bpcmap <= 0] <- NA 
 
 bpcmap <- log2(bpcmap)
 
@@ -427,8 +403,7 @@ pheatmap(bpcmap, cluster_cols = FALSE,
          annotation_row = ann)
 ```
 
-The samples don't group perfectly by sample group. 3 samples (S1R5, S9R4 and
-S9R5) show higher signal from 1500 to the end of the chromatography. This might represent background signal/noise.
+we see that S1 and S9 are well grouped after retention time alignment.
 
 Now we can visualize the changes before and after retention time alignment
 
@@ -503,11 +478,7 @@ plot(a_adj, col = paste0(col_sample_ftms, 80),
      xlim = c(1300, 1500), peakType = "none")
 ```
 
-We can thus conclude that the settings for the retention time alignment worked
-on the present data set. We continue the preprocessing with the final
-correspondence analysis. We adapt now the settings, in particular the bw
-parameter, that can be much stricter because of the properly aligned data
-set. Again, we test the settings on the extracted ion signal.
+We can thus conclude that the settings for the retention time alignment worked on the present data set. We continue the preprocessing with the final correspondence analysis. We adapt now the settings, in particular the bw parameter, that can be much stricter because of the properly aligned data set. Again, we test the settings on the extracted ion signal.
 
 ```{r}
 #' Configure settings
@@ -537,8 +508,7 @@ now we group chromatographic peak
 ftms <- groupChromPeaks(ftms, param = pdp)
 ```
 
-As a final step we next perform gap-filling to reduce the number of missing
-values in the data set.
+As a final step we next perform gap-filling to reduce the number of missing values in the data set.
 
 ```{r}
 #' The number of missing values before gap filling
@@ -558,16 +528,22 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = file.path(pth, "data/ftms_final.RData"))
+save(ftms, file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final2.RData")
 ```
 
 ```{r}
-load(file = file.path(pth, "data/ftms_final.RData"))
+load(file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_final2.RData")
 ```
 
 ```{r}
 nrow(featureDefinitions(ftms))
 ```
+
+```{r}
+msLevel(spectra(ftms)) |>
+  table()
+```
+
 
 We next save the raw and adjusted BPC to a image file.
 
@@ -596,10 +572,10 @@ corrected_features <- featureDefinitions(ftms)
 #x: mzmed and y: rtmed of each feature
 
 final_feature_matrix <- data.frame(
- `rt(min)` = corrected_features$rtmed / 60,
-  mzmed = corrected_features$mzmed,
-  feature_name = paste0(
-    "M", round(corrected_features$mzmed, 0),
+ `rt(min)` = corrected_features$rtmed / 60, 
+  mzmed = corrected_features$mzmed,         
+  feature_name = paste0(                     
+    "M", round(corrected_features$mzmed, 0), 
     "T", round(corrected_features$rtmed, 0)
   )
 )
@@ -610,27 +586,7 @@ final_feature_matrix <- data.frame(
 ```{r}
 
 
-feature_indices <- featureValues(ftms, value = "index")
-final_feature_matrix <- cbind(final_feature_matrix, feature_indices)
 
-#Here we add "compound_id" column that gives
-#to each unique feature a unique identifier
-
-final_feature_matrix <- final_feature_matrix %>%
-  group_by(feature_name) %>%
-  mutate(compound_id = paste0("DYNLIB", sprintf("%08d", cur_group_id()))) %>%
-  ungroup()
-
-#Now we save the resulting feature matrix to a local folder
-
-output_path <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/Feature_matrix/feature_matrix_ftms.txt"
-write.table(
-  final_feature_matrix,
-  file = output_path,
-  sep = "\t",
-  row.names = FALSE,
-  quote = FALSE
-)
 
 
 ```
