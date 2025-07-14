@@ -8,7 +8,7 @@ This folder contains the following files:
 
 <!-- -->
 
--    " ftms_analysis.qmd" : where we upload and analyse the data with the xcms treatment.
+-   " ftms_analysis.qmd" : where we upload and analyse the data with the xcms treatment.
 
 -   "adding_to_the_RDynlib_library.qmd" : in this file we filtered the ftms data and we kept just one tree per feature and we load the resulting object as "ftms_one_tree".
 
