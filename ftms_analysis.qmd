@@ -8,11 +8,7 @@ editor_options:
 
 ## Shiny Documents
 
-This Quarto document is made interactive using Shiny. Interactive documents allow readers to modify parameters and see the results immediately. Learn more about Shiny interactive documents at <https://quarto.org/docs/interactive/shiny/>.
-
-## Inputs and Outputs
-
-You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change. This demonstrates how a standard R plot can be made interactive:
+In this document, we present all the main steps for analyzing FTMS data, including data visualization, preprocessing, XCMS processing, and retention time alignment. We also plotted the extracted ion chromatograms of some known compounds.
 
 ```{r}
 library(MsExperiment)
@@ -87,8 +83,7 @@ msLevel(spectra(ftms)) |>
 
 ```
 
-This data contains 4 MS levels but with empty spectra so we removed them using
-`filterEmptySpectra()` function
+This data contains 4 MS levels but with empty spectra so we removed them using `filterEmptySpectra()` function
 
 ```{r}
 ftms <- filterSpectra(ftms, filterEmptySpectra)
@@ -104,9 +99,7 @@ plot(bpc0, col = paste0(col_sample_ftms, 80))
 grid()
 ```
 
-We next extract a total ion chromatogram (TIC) and base peak chromatogram (BPC)
-and calculate the similarities between these to evaluate similarity in the
-performance of the liquid chromatography.
+We next extract a total ion chromatogram (TIC) and base peak chromatogram (BPC) and calculate the similarities between these to evaluate similarity in the performance of the liquid chromatography.
 
 ```{r}
 #' Extract TIC
@@ -294,16 +287,14 @@ ftms <- findChromPeaks(ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2)
                        chunkSize = 2)
 ```
 
-With this setting we identified `r nrow(chromPeaks(ftms))` peaks in the full
-data set. The number of peaks per sample are:
+With this setting we identified `r nrow(chromPeaks(ftms))` peaks in the full data set. The number of peaks per sample are:
 
 ```{r}
 pks <- chromPeaks(ftms)
 table(pks[, "sample"])
 ```
 
-The distribution of the peak widths in retention time and in m/z
-dimensions are:
+The distribution of the peak widths in retention time and in m/z dimensions are:
 
 ```{r}
 quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
@@ -317,8 +308,7 @@ mnpp <- MergeNeighboringPeaksParam(expandRt = 13, expandMz = 0.0003)
 ftms <- refineChromPeaks(ftms, mnpp)
 ```
 
-We evaluate the number of peaks and the observed peak widths also after
-refinement.
+We evaluate the number of peaks and the observed peak widths also after refinement.
 
 ```{r}
 pks <- chromPeaks(ftms)
@@ -563,7 +553,6 @@ grid()
 
 dev.off()
 ```
-
 
 # Session information
 
