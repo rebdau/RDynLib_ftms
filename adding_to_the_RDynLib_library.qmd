@@ -28,8 +28,8 @@ register(SerialParam())
 first we load the XcmsExperiment ftms object
 
 ```{r}
-pth <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/"
-load(file = file.path(pth, "data/ftms_final2.RData"))
+
+load("data/ftms_final2.RData")
 class(ftms)
 ```
 
@@ -137,7 +137,6 @@ the resulting spectra object contains 1679 MS2, 1858 MS3, and 926 MS4.
 ```{r}
 spectraData(ftms_levels)
 ```
-
 
 
 
@@ -307,10 +306,32 @@ each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 ```{r}
-save(ftms_one_tree, file = "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/qtof.RData")
+save(ftms_one_tree, file = "data/ftms_one_tree.RData")
 ```
 
 
 
+```{r}
+round_perl <- function(line) {
+  # Extraire intensity et mass/position avec regex
+  matches <- regmatches(line, regexec(".*intensity = (\\d+\\.?\\d*), mass/position = (\\d+\\.?\\d*).*", line))
+  
+  if (length(matches[[1]]) == 3) {
+    intensity <- as.numeric(matches[[1]][2])
+    mass <- as.numeric(matches[[1]][3])
+    # formater mass à 2 décimales, comme sprintf("%.2f", ...)
+    mass_formatted <- sprintf("%.2f", mass)
+    return(list(intensity = intensity, mass = mass_formatted))
+  } else {
+    stop("La ligne ne correspond pas au format attendu.")
+  }
+}
+
+# Exemple d'utilisation :
+line <- "some text intensity = 1234.467, mass/position = 45.6789 more text"
+round_perl(line)
+# Résultat : list(intensity = 1234.567, mass = "45.68")
+
+```
 
 
