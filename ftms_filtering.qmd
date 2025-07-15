@@ -26,13 +26,15 @@ library(MsExperiment)
 library(Spectra)
 library(readxl)
 register(SerialParam())
+pth <- getwd()
+pth
 ```
 
 First we load the `XcmsExperiment` ftms object
 
 ```{r}
 
-load("data/ftms.RData")
+load("data/ftms_final2.RData")
 class(ftms)
 ```
 
@@ -155,54 +157,76 @@ assign_msntree_id <- function(x) {
   ms_level <- msLevel(x)
   data_origin <- dataOrigin(x)
 
-  tree_id <- rep(NA, length(scan_index))
+  tree_id <- rep(NA_integer_, length(scan_index))
   global_counter <- 0
 
   for (origin in unique(data_origin)) {
-    origin_indices <- which(data_origin == origin)
-    origin_scan_index <- scan_index[origin_indices]
-    origin_prec_scan_num <- prec_scan_num[origin_indices]
-    origin_ms_level <- ms_level[origin_indices]
+    idx <- which(data_origin == origin)
+    origin_scan_index <- scan_index[idx]
+    origin_prec_scan_num <- prec_scan_num[idx]
+    origin_ms_level <- ms_level[idx]
+    origin_tree_id <- rep(NA_integer_, length(idx))
 
-    origin_tree_id <- rep(NA, length(origin_scan_index))
+    
+    scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
 
-    for (i in seq_along(origin_scan_index)) {
-      if (origin_ms_level[i] == 4) {
+    for (i in seq_along(idx)) {
+      level <- origin_ms_level[i]
 
-        parent_ms3 <- which(origin_scan_index == origin_prec_scan_num[i] & origin_ms_level == 3)
-        if (length(parent_ms3) > 0) {
-          parent_ms2 <- which(origin_scan_index == origin_prec_scan_num[parent_ms3] & origin_ms_level == 2)
-          if (length(parent_ms2) > 1)
-            stop("MS4 spectrum with multiple MS2 ids: ", length(parent_ms2),
-                 " origin ", origin, " i ", i)
-          if (length(parent_ms2) > 0) {
-            origin_tree_id[i] <- origin_tree_id[parent_ms2]
+      if (level == 2) {
+        # If MS2 hasn't been assigned yet
+        if (is.na(origin_tree_id[i])) {
+          global_counter <- global_counter + 1
+          origin_tree_id[i] <- global_counter
+        }
+
+      } else if (level == 3) {
+        parent_scan <- origin_prec_scan_num[i]
+        parent_pos <- scan_idx_map[as.character(parent_scan)]
+        if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == 2) {
+          if (is.na(origin_tree_id[parent_pos])) {
+            # Assign tree ID to parent MS2 first
+            global_counter <- global_counter + 1
+            origin_tree_id[parent_pos] <- global_counter
           }
+          origin_tree_id[i] <- origin_tree_id[parent_pos]
+        } else if (length(parent_pos) > 1) {
+          stop("MS3 spectrum with multiple MS2 parents")
         }
-      } else if (origin_ms_level[i] == 3) {
 
-        parent_ms2 <- which(origin_scan_index == origin_prec_scan_num[i] & origin_ms_level == 2)
-        if (length(parent_ms2) > 1)
-          stop("MS3 spectrum with multiple MS2 ids: ", length(parent_ms2),
-               " origin ", origin, " i ", i)
-        if (length(parent_ms2) > 0) {
-          origin_tree_id[i] <- origin_tree_id[parent_ms2]
+      } else if (level == 4) {
+        parent_scan <- origin_prec_scan_num[i]
+        parent_pos_ms3 <- scan_idx_map[as.character(parent_scan)]
+        if (length(parent_pos_ms3) == 1 && origin_ms_level[parent_pos_ms3] == 3) {
+          ms2_scan <- origin_prec_scan_num[parent_pos_ms3]
+          parent_pos_ms2 <- scan_idx_map[as.character(ms2_scan)]
+          if (length(parent_pos_ms2) == 1 && origin_ms_level[parent_pos_ms2] == 2) {
+            # Assign tree ID to MS2 if not yet done
+            if (is.na(origin_tree_id[parent_pos_ms2])) {
+              global_counter <- global_counter + 1
+              origin_tree_id[parent_pos_ms2] <- global_counter
+            }
+            origin_tree_id[i] <- origin_tree_id[parent_pos_ms2]
+          } else if (length(parent_pos_ms2) > 1) {
+            stop("MS4 spectrum with multiple MS2 parents")
+          }
+        } else if (length(parent_pos_ms3) > 1) {
+          stop("MS4 spectrum with multiple MS3 parents")
         }
-      } else if (origin_ms_level[i] == 2) {
-        global_counter <- global_counter + 1
-        origin_tree_id[i] <- global_counter
       }
     }
-    tree_id[origin_indices] <- origin_tree_id
+
+    tree_id[idx] <- origin_tree_id 
   }
 
   return(tree_id)
 }
 
+
 msntree_ids <- assign_msntree_id(ftms_msn_tree)
 
-ftms_levels$MSntreeID <- msntree_ids
-spectraVariables(ftms_levels)
+ftms_msn_tree$MSntreeID <- msntree_ids
+spectraVariables(ftms_msn_tree)
 
 ```
 
@@ -222,8 +246,8 @@ we have 1679 fragmentation tree.
 
 ```{r}
 # we stored the tree ids and the msLevels to a dataframe
-tree_ids <- ftms_levels$MSntreeID
-ms_levels <- msLevel(ftms_levels)
+tree_ids <- ftms_msn_tree$MSntreeID
+ms_levels <- msLevel(ftms_msn_tree)
 df <- data.frame(
   MSntreeID = tree_ids,
   MSLevel = ms_levels
@@ -289,7 +313,7 @@ filtered_trees_spectra <- function(db) {
 }
 
 
-ftms_one_tree <- filtered_trees_spectra(ftms_levels)
+ftms_one_tree <- filtered_trees_spectra(ftms_msn_tree)
 
 msLevel(ftms_one_tree) |> table()
 
@@ -322,24 +346,5 @@ save(ftms_one_tree, file = "data/ftms_one_tree.RData")
 
 
 ```{r}
-round_perl <- function(line) {
-  # Extraire intensity et mass/position avec regex
-  matches <- regmatches(line, regexec(".*intensity = (\\d+\\.?\\d*), mass/position = (\\d+\\.?\\d*).*", line))
-
-  if (length(matches[[1]]) == 3) {
-    intensity <- as.numeric(matches[[1]][2])
-    mass <- as.numeric(matches[[1]][3])
-    # formater mass à 2 décimales, comme sprintf("%.2f", ...)
-    mass_formatted <- sprintf("%.2f", mass)
-    return(list(intensity = intensity, mass = mass_formatted))
-  } else {
-    stop("La ligne ne correspond pas au format attendu.")
-  }
-}
-
-# Exemple d'utilisation :
-line <- "some text intensity = 1234.467, mass/position = 45.6789 more text"
-round_perl(line)
-# Résultat : list(intensity = 1234.567, mass = "45.68")
 
 ```
