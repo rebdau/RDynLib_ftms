@@ -7,33 +7,37 @@ format:
 author: "Ahlam Mentag, Johannes Rainer"
 ---
 
-## Shiny Documents
-This Quarto document presents the analysis of FTMS flaxseed data for selecting 
-one representative tree per feature.
+# Introduction
+
+This Quarto document presents the analysis of FTMS flaxseed data for selecting
+one representative tree per feature. Preprocessing and feature definition was
+performed in [ftms_preprocessing.qmd](ftms_preprocessing.qmd).
+
+# Data import
+
+Loading all required libraries and importing the results from the data
+prepocessing.
 
 ```{r}
-library(MsExperiment)
-library(Spectra)
 library(dplyr)
 library(tidyr)
-library(BiocParallel)
 library(xcms)
 library(MsExperiment)
 library(Spectra)
-library(MSnbase)
 library(readxl)
 register(SerialParam())
 ```
 
-first we load the XcmsExperiment ftms object
+First we load the `XcmsExperiment` ftms object
 
 ```{r}
 
-load("data/ftms_final2.RData")
+load("data/ftms.RData")
 class(ftms)
 ```
 
-Next, we try "featureSpectra()" function on the ftms object.
+Next, we use `featureSpectra()"` to extract all MS2 spectra for each feature
+from `ftms` object.
 
 ```{r}
 ms2 <- featureSpectra(ftms, msLevel = 2)
@@ -42,7 +46,12 @@ msLevel(ms2) |>
   table()
 ```
 
-it returns 1679 MS level 2
+it returns 1679 MS level 2 spectra. The total number of features for which an
+MS2 spectrum was identified is:
+
+```{r}
+length(unique(ms2$feature_id))
+```
 
 Here we print the initial number of MSLevels.
 
@@ -51,10 +60,11 @@ s <- spectra(ftms)
 table(msLevel(s))
 ```
 
-this function takes as input the XcmsExperiment object, then it extract the MS2
-spectra using "featureSpectra()" function, after that we extract from the
-initial object only the MS3 fragments that have a parent ion in the result of
-"featureSpectra()" function, and then we do the same process for MS4.
+We next define a function to extract the full MSn tree for features.
+This function takes an `XcmsExperiment` object as input, extracts the MS2
+spectra using `featureSpectra()` function, and then retrieves all MS3 (and
+subsequently MS4 spectra) for all these MS2 spectra using the *precScanNum*
+spectra variable.
 
 ```{r}
 ftms_all_levels <- function(ftms) {
@@ -63,7 +73,7 @@ ftms_all_levels <- function(ftms) {
   cat("Number of MS2 spectra found:", length(ms2), "\n")
 
   res <- lapply(unique(ms2$dataOrigin), function(origin) {
-    ms2_subset <- ms2[ms2$dataOrigin == origin]
+    ms2_subset <- filterDataOrigin(ms2, origin)
 
     ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
     ## To support n:m matches
@@ -74,7 +84,7 @@ ftms_all_levels <- function(ftms) {
 
     ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
     m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
-   
+    cat("Number of MS4 matched to MS3:", length(m), "\n")
     ms4_filtered <- ms4_filtered[to(m)]
     ms4_filtered$feature_id <- ms3_filtered$feature_id[from(m)]
 
@@ -82,14 +92,11 @@ ftms_all_levels <- function(ftms) {
     c(ms2_subset, ms3_filtered, ms4_filtered)
   })
     do.call(c, res)
- 
 }
 
+ftms_msn_tree <- ftms_all_levels(ftms)
 
-ftms_levels <- ftms_all_levels(ftms)
-
-
-table(msLevel(ftms_levels))
+table(msLevel(ftms_msn_tree))
 ```
 
 Checking the MSn data for one feature - and evaluate if the relationship
@@ -98,7 +105,7 @@ between the MSn spectra is correct.
 ```{r}
 ft <- "FT4282"
 
-a <- ftms_levels[ftms_levels$feature_id == ft]
+a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
 a
 
 #' split by dataOrigin
@@ -113,7 +120,7 @@ spectraData(al[[2]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
 #' This too.
 
 ft <- "FT0649"
-a <- ftms_levels[ftms_levels$feature_id == ft]
+a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
 a
 
 #' split by dataOrigin
@@ -130,26 +137,23 @@ filterPrecursorScan(al[[1]], 3919)
 #' Seems to be OK
 ```
 
-the resulting spectra object contains 1679 MS2, 1858 MS3, and 926 MS4.
-
-
+The number of spectra from different MS levels is shown below:
 
 ```{r}
-spectraData(ftms_levels)
+table(msLevel(ftms_msn_tree))
 ```
 
-
-
-
-This function creates MSntreeID column that gouped related scans into
+We next need to group all MSn spectra from one fragment tree together.
+The function below creates an *MSntreeID* column grouping related scans into
 fragmentation trees based on their parent-child relationships.
+
 ```{r}
 
-assign_msntree_id <- function(ftms_levels) {
-  scan_index <- scanIndex(ftms_levels)
-  prec_scan_num <- precScanNum(ftms_levels)
-  ms_level <- msLevel(ftms_levels)
-  data_origin <- dataOrigin(ftms_levels)
+assign_msntree_id <- function(x) {
+  scan_index <- scanIndex(x)
+  prec_scan_num <- precScanNum(x)
+  ms_level <- msLevel(x)
+  data_origin <- dataOrigin(x)
 
   tree_id <- rep(NA, length(scan_index))
   global_counter <- 0
@@ -168,6 +172,9 @@ assign_msntree_id <- function(ftms_levels) {
         parent_ms3 <- which(origin_scan_index == origin_prec_scan_num[i] & origin_ms_level == 3)
         if (length(parent_ms3) > 0) {
           parent_ms2 <- which(origin_scan_index == origin_prec_scan_num[parent_ms3] & origin_ms_level == 2)
+          if (length(parent_ms2) > 1)
+            stop("MS4 spectrum with multiple MS2 ids: ", length(parent_ms2),
+                 " origin ", origin, " i ", i)
           if (length(parent_ms2) > 0) {
             origin_tree_id[i] <- origin_tree_id[parent_ms2]
           }
@@ -175,6 +182,9 @@ assign_msntree_id <- function(ftms_levels) {
       } else if (origin_ms_level[i] == 3) {
 
         parent_ms2 <- which(origin_scan_index == origin_prec_scan_num[i] & origin_ms_level == 2)
+        if (length(parent_ms2) > 1)
+          stop("MS3 spectrum with multiple MS2 ids: ", length(parent_ms2),
+               " origin ", origin, " i ", i)
         if (length(parent_ms2) > 0) {
           origin_tree_id[i] <- origin_tree_id[parent_ms2]
         }
@@ -189,7 +199,7 @@ assign_msntree_id <- function(ftms_levels) {
   return(tree_id)
 }
 
-msntree_ids <- assign_msntree_id(ftms_levels)
+msntree_ids <- assign_msntree_id(ftms_msn_tree)
 
 ftms_levels$MSntreeID <- msntree_ids
 spectraVariables(ftms_levels)
@@ -198,7 +208,7 @@ spectraVariables(ftms_levels)
 
 
 ```{r}
-spectraData(ftms_levels)
+spectraData(ftms_msn_tree)
 ```
 
 ```{r}
@@ -245,7 +255,7 @@ library(Spectra)
 library(dplyr)
 
 filtered_trees_spectra <- function(db) {
-  
+
   # Extract metadata from the Spectra object
   sps_data <- spectraData(db)
 
@@ -259,9 +269,9 @@ filtered_trees_spectra <- function(db) {
     FTmax <- names(table(feature_block$MSntreeID))[table(feature_block$MSntreeID) == max_number]
     feat_block_sel1 <- feature_block[feature_block$MSntreeID %in% as.numeric(FTmax), ]
     feat_block_sel1_MS2 <- feat_block_sel1[feat_block_sel1$msLevel == 2, ]
-    
+
     if (nrow(feat_block_sel1_MS2) == 0) return(NULL)
-    #Select the one with the highest MS2 precursor Intensity 
+    #Select the one with the highest MS2 precursor Intensity
     index <- order(feat_block_sel1_MS2$precursorIntensity, decreasing = TRUE)[1]
     selected_FT <- feat_block_sel1_MS2$MSntreeID[index]
     feature_block[feature_block$MSntreeID == selected_FT, ]
@@ -289,7 +299,7 @@ after selecting one representative tree per feature we have now:
 MS2 : 437, MS3 : 523, MS4 : 262
 
 
-Finally we verify if the number of unique features corresponds to the number of 
+Finally we verify if the number of unique features corresponds to the number of
 unique MSntreeID to ensure that we have one tree per feature.
 ```{r}
 length(unique(ftms_one_tree$feature_id))
@@ -300,7 +310,7 @@ length(unique(ftms_one_tree$feature_id))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 437 unique feature and unique MSntreeID, That's mean that we have for 
+we have 437 unique feature and unique MSntreeID, That's mean that we have for
 each feature one representative tree.
 
 
@@ -315,7 +325,7 @@ save(ftms_one_tree, file = "data/ftms_one_tree.RData")
 round_perl <- function(line) {
   # Extraire intensity et mass/position avec regex
   matches <- regmatches(line, regexec(".*intensity = (\\d+\\.?\\d*), mass/position = (\\d+\\.?\\d*).*", line))
-  
+
   if (length(matches[[1]]) == 3) {
     intensity <- as.numeric(matches[[1]][2])
     mass <- as.numeric(matches[[1]][3])
@@ -333,5 +343,3 @@ round_perl(line)
 # Résultat : list(intensity = 1234.567, mass = "45.68")
 
 ```
-
-
