@@ -34,7 +34,7 @@ First we load the `XcmsExperiment` ftms object
 
 ```{r}
 
-load("data/ftms_final2.RData")
+load(file.path(pth, "data", "ftms.RData"))
 class(ftms)
 ```
 
@@ -152,6 +152,9 @@ fragmentation trees based on their parent-child relationships.
 ```{r}
 
 assign_msntree_id <- function(x) {
+  ## Order x by MS level: ensures we first assign an ID to the MS2.
+  o <- order(msLevel(x))
+  x <- x[o]
   scan_index <- scanIndex(x)
   prec_scan_num <- precScanNum(x)
   ms_level <- msLevel(x)
@@ -167,61 +170,31 @@ assign_msntree_id <- function(x) {
     origin_ms_level <- ms_level[idx]
     origin_tree_id <- rep(NA_integer_, length(idx))
 
-    
     scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
 
     for (i in seq_along(idx)) {
       level <- origin_ms_level[i]
-
       if (level == 2) {
-        # If MS2 hasn't been assigned yet
+        ## If MS2 hasn't been assigned yet
         if (is.na(origin_tree_id[i])) {
           global_counter <- global_counter + 1
           origin_tree_id[i] <- global_counter
         }
-
-      } else if (level == 3) {
+      } else {
+        ## Assign ID of the related precursor ID
         parent_scan <- origin_prec_scan_num[i]
         parent_pos <- scan_idx_map[as.character(parent_scan)]
-        if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == 2) {
-          if (is.na(origin_tree_id[parent_pos])) {
-            # Assign tree ID to parent MS2 first
-            global_counter <- global_counter + 1
-            origin_tree_id[parent_pos] <- global_counter
-          }
+        if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1))
           origin_tree_id[i] <- origin_tree_id[parent_pos]
-        } else if (length(parent_pos) > 1) {
-          stop("MS3 spectrum with multiple MS2 parents")
-        }
-
-      } else if (level == 4) {
-        parent_scan <- origin_prec_scan_num[i]
-        parent_pos_ms3 <- scan_idx_map[as.character(parent_scan)]
-        if (length(parent_pos_ms3) == 1 && origin_ms_level[parent_pos_ms3] == 3) {
-          ms2_scan <- origin_prec_scan_num[parent_pos_ms3]
-          parent_pos_ms2 <- scan_idx_map[as.character(ms2_scan)]
-          if (length(parent_pos_ms2) == 1 && origin_ms_level[parent_pos_ms2] == 2) {
-            # Assign tree ID to MS2 if not yet done
-            if (is.na(origin_tree_id[parent_pos_ms2])) {
-              global_counter <- global_counter + 1
-              origin_tree_id[parent_pos_ms2] <- global_counter
-            }
-            origin_tree_id[i] <- origin_tree_id[parent_pos_ms2]
-          } else if (length(parent_pos_ms2) > 1) {
-            stop("MS4 spectrum with multiple MS2 parents")
-          }
-        } else if (length(parent_pos_ms3) > 1) {
-          stop("MS4 spectrum with multiple MS3 parents")
-        }
+        else
+          stop("MS", level, " with ", length(parent_pos), " precursors")
       }
     }
-
-    tree_id[idx] <- origin_tree_id 
+    tree_id[idx] <- origin_tree_id
   }
-
-  return(tree_id)
+  ## Return in original order
+  return(tree_id[order(o)])
 }
-
 
 msntree_ids <- assign_msntree_id(ftms_msn_tree)
 
@@ -230,35 +203,50 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
+The total number of MSn trees:
 
 ```{r}
-spectraData(ftms_msn_tree)
+length(unique(ftms_msn_tree$MSntreeID))
 ```
 
+for in total `r length(unique(ftms_msn_tree$feature_id))` features. The
+distribution of the lengths of the fragmentation trees is
+
 ```{r}
-length(unique(msntree_ids))
+ftms_msn_tree$MSntreeID |>
+    table() |>
+    quantile()
 ```
 
-we have 1679 fragmentation tree.
+There is apparently (at least) one tree with 7 spectra. Extracting this
+particular MSn tree.
 
+```{r}
+max_index <- ftms_msn_tree$MSntreeID |>
+    table() |>
+    as.integer() |>
+    which.max()
 
+max_tree <- ftms_msn_tree[ftms_msn_tree$MSntreeID == max_index]
+max_tree$rtime
+max_tree$msLevel
+max_tree$precScanNum
+
+```
+
+This tree has thus several MS3 and MS4 spectra.
 
 
 ```{r}
-# we stored the tree ids and the msLevels to a dataframe
-tree_ids <- ftms_msn_tree$MSntreeID
-ms_levels <- msLevel(ftms_msn_tree)
-df <- data.frame(
-  MSntreeID = tree_ids,
-  MSLevel = ms_levels
-)
+## we stored the tree ids and the msLevels to a dataframe
+df <- spectraData(ftms_msn_tree, c("MSntreeID", "msLevel")) |>
+    as.data.frame()
 
-
-#here we take count the last level of each tree
+## here we take count the last level of each tree
 library(dplyr)
 max_level_per_tree <- df %>%
   group_by(MSntreeID) %>%
-  summarise(max_level = max(MSLevel), .groups = "drop")
+  summarise(max_level = max(msLevel), .groups = "drop")
 
 
 table(max_level_per_tree$max_level)
@@ -269,19 +257,15 @@ The number of trees that go up to MS2 level is : 415
 The number of trees that go up to MS3 level is : 338
 The number of trees that go up to MS4 level is : 926
 
-
-
 Next we select one most representative tree per feature based on the longest one
 and if we have many, we select one tree with the highest MS2 precursor intensity
 
 ```{r}
-library(Spectra)
-library(dplyr)
 
 filtered_trees_spectra <- function(db) {
 
   # Extract metadata from the Spectra object
-  sps_data <- spectraData(db)
+  sps_data <- as.data.frame(spectraData(db))
 
   # Split by feature_id
   feat_block <- split(sps_data, f = sps_data$feature_id)
@@ -312,7 +296,6 @@ filtered_trees_spectra <- function(db) {
   return(selected_sps)
 }
 
-
 ftms_one_tree <- filtered_trees_spectra(ftms_msn_tree)
 
 msLevel(ftms_one_tree) |> table()
@@ -325,6 +308,7 @@ MS2 : 437, MS3 : 523, MS4 : 262
 
 Finally we verify if the number of unique features corresponds to the number of
 unique MSntreeID to ensure that we have one tree per feature.
+
 ```{r}
 length(unique(ftms_one_tree$feature_id))
 ```
@@ -340,11 +324,11 @@ each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 ```{r}
-save(ftms_one_tree, file = "data/ftms_one_tree.RData")
+save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
 ```
 
-
+# Session information
 
 ```{r}
-
+sessionInfo()
 ```
