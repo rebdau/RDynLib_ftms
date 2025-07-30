@@ -12,18 +12,28 @@ This document defines and describes the centroiding of the profile-mode FTMS LC-
 
 # Data import and centroiding
 
-We use the *Spectra* package, in particular its `pickPeaks()` function to perform the centroiding. We perform the analysis separately for each original mzXML file and export the data directly to a file in mzML format.
+We first load all required R packages for the analysis in this document.
 
 ```{r}
 #| message: false
 
 #' Load required libraries
 library(Spectra)
+library(MsExperiment)
+library(readxl)
+library(dplyr)
+library(readr)
+library(purrr)
+```
 
+We use the *Spectra* package, in particular its `pickPeaks()` function to perform the centroiding. We perform the analysis separately for each original mzXML file and export the data directly to a file in mzML format.
+
+```{r}
 #' Define the paths to the original mzXML files with the profile-mode data
 #' and the path where we want to export the centroided mzML data.
-MZXML_PATH <- "data/mzXML"
-MZML_PATH <- "data/mzML"
+pth <- getwd()
+MZXML_PATH <- file.path(pth,"data","mzXML")
+MZML_PATH <- file.path(pth,"data","mzML")
 
 #' List all files
 fls <- dir(MZXML_PATH, full.name = TRUE)
@@ -81,7 +91,7 @@ We proceed now and centroid all data files with the settings above.
 
 ```{r}
 if (!dir.exists(MZML_PATH))
-    dir.create(MZML_PATH, recursize = TRUE)
+    dir.create(MZML_PATH, recursive = TRUE)
 
 for (f in fls) {
     a <- Spectra(f)
@@ -99,10 +109,10 @@ all.equal(a$scanIndex, b$scanIndex)
 ```
 
 ```{r}
-sample_data_ftms <- read_xlsx("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_data_files.xlsx") |>
+sample_data_ftms <- read_xlsx(file.path(pth,"data","sample_data","ftms_data_files.xlsx")) |>
     as.data.frame()
-file <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/mzML/"
-ftms <- readMsExperiment(paste0(file, sample_data_ftms$data_file),
+
+ftms <- readMsExperiment(file.path(MZML_PATH, sample_data_ftms$data_file),
                          sampleData = sample_data_ftms)
 ftms
 ```
@@ -113,20 +123,20 @@ spectraData(s)
 ```
 
 ```{r}
-library(dplyr)
-library(readr)
-library(purrr)
+# Create the read_csv_safely() function to safely read a delimited text file (CSV or TSV) into a data frame.
+# The function tries to use readr::read_delim() for speed and robustness,
+# and falls back to base::read.csv() if an error occurs.
 read_csv_safely <- function(file_path, sep = "\t", quote = "\"", header = TRUE, col_types = NULL) {
   if (!file.exists(file_path)) {
-    stop(paste("Le fichier n'existe pas :", file_path))
+    stop(paste("The file does not exist:", file_path))
   }
   
   tryCatch({
     data <- read_delim(file_path, delim = sep, quote = quote, col_names = header, col_types = col_types)
     return(as.data.frame(data))  
   }, error = function(e) {
-    message("Erreur lors de la lecture avec read_delim : ", e$message)
-    message("Essai avec read.csv...")
+    message("Error while reading with read_delim: ", e$message)
+    message("Trying read.csv...")
     data <- read.csv(file_path, sep = sep, quote = quote, header = header, stringsAsFactors = FALSE)
     return(as.data.frame(data))  
   })
@@ -164,7 +174,7 @@ head(ms2_mismatched)
 
 # Questions and notes
 
--   [ ] There seems to be still some fourier transform artefact present in the data after the centroiding. Maybe we could/should use another software for the centroiding? Maybe the original Thermo software?
+-   [ ] There seems to be still some fourier transform artefact present in the data after the centroiding. Maybe we could/should use another software for the centroiding? Maybe the original Thermo software? -\>For future analyses we can record also the MS1 data directly in centroid mode.
 
 # Session information
 
