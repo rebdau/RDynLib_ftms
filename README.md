@@ -10,17 +10,6 @@ This folder contains the following files:
 - [ftms_preprocessing.qmd](ftms_preprocessing.qmd) : where we load and analyse
   the data with the *xcms* package.
 
-
--   " ftms_preprocessing.qmd" : where we upload and analyse the data with the xcms treatment.
-
--   "ftms_filtering.qmd" : in this file we filtered the ftms data and we kept just one tree per feature and we load the resulting object as "ftms_one_tree".
-
-    **The execution order:**
-
-    1.  " centroiding.qmd"
-    2.  " ftms_preprocessing.qmd"
-    3.  "ftms_filtering.qmd"
-
 - [ftms_filtering.qmd](ftms_filtering.qmd): in this file we filter the ftms data
   to keep one tree per feature.
 
