@@ -39,7 +39,7 @@ First we load the `XcmsExperiment` ftms object
 
 ```{r}
 
-load(file.path(pth, "data", "ftms.RData"))
+load(file.path(pth, "data", "ftms_sh.RData"))
 class(ftms)
 ```
 
@@ -60,12 +60,17 @@ ms2 <- featureSpectra(ftms, msLevel = 2)
 msLevel(ms2) |>
   table()
 ```
+```{r}
+spectraData(ms2)
+```
 
-it returns 1679 MS level 2 spectra. The total number of features for
+
+it returns 2755 MS level 2 spectra. The total number of features for
 which an MS2 spectrum was identified is:
 
 ```{r}
 length(unique(ms2$feature_id))
+length(ms2$feature_id)
 ```
 
 Here we print the initial number of MSLevels.
@@ -75,24 +80,99 @@ s <- spectra(ftms)
 table(msLevel(s))
 ```
 
-In total, there were 20804 MS2 spectra. This means that 92% of the MS2
+In total, there were 20804 MS2 spectra. This means that 86% of the MS2
 spectra ((20804-1679)\*100/20804) could not be assigned to any
 chromatographic peak.
 
-MS2 spectra are assigned to chromatographic peaks for which they lay
-within the mz and rt limits. Therefore, they can be assigned to more
-than one chromatographic feature. In the below code we explore, for each
-sample (dataOrigin), how many MS2 spectra are assigned to more than one
-feature. This is reflected in multiple appearances of the same MS2
-spectra (with the same scanIndex).
+The percentage of features with at least one MS2:
+```{r}
+# Total number of features in ftms
+n_total_features <- nrow(featureDefinitions(ftms))
 
+# Features with ≥1 MS2 (those returned by featureSpectra)
+n_features_with_ms2 <- length(ms2)
+
+# Percentage
+perc_features_with_ms2 <- (n_features_with_ms2 / n_total_features) * 100
+perc_features_with_ms2
+
+
+
+```
+The percentage of features with at least one MS2 is 49%
+
+the percentage of MS2 spectra that are assigned to a feature
+
+```{r}
+# Total number of MS2 spectra in the dataset
+n_total_ms2 <- sum(msLevel(s) == 2)
+
+# Number of MS2 spectra assigned to features
+n_assigned_ms2 <- sum(lengths(ms2))
+
+# Percentage assigned
+perc_ms2_assigned <- (n_assigned_ms2 / n_total_ms2) * 100
+perc_ms2_assigned
+
+```
+the percentage of MS2 spectra that are assigned to a feature is 15%
+
+Now we will keep just one MS2 the closest in retention time if there is more
+than one MS2 spectra linked to the same feature.
+First we select the duplicated MS2 spectra for that we select those with the
+same dataOrigin, same acquisitionNum, and different feature_id. and from those 
+duplicated MS2 spectra we keep just one with a retention time close to the
+retention time of the feature
+
+```{r}
+
+select_unique_MS2 <- function(ms2, ftms){
+  sp <- spectraData(ms2)
+  
+  #Create indices for the duplicated groupes (i.e: dataOrigine + acquisitionNum)
+  sp$groupID <- paste0(sp$dataOrigine, "_", sp$acquisitionNum)
+  
+  #Group Indices by groupID
+  groups <- split(1:nrow(sp), sp$groupID)
+  
+  #List to store indices that we will keep
+  keep_indices <- unlist(
+    lapply(groups, function(idx){
+      #keep just the indices that have different feature_id
+      if(length(unique(sp$feature_id[idx])) > 1){
+        #Calclate the difference between the RT of each MS2 spectra with
+        #the RT of the feature that is assigned to 
+        rt_diff <- abs(rtime(ms2)[idx] - featureDefinitions(ftms)[sp$feature_id[idx], "rtmed"])
+        
+        #keep the index with the smallest RT difference
+        idx[which.min(rt_diff)]
+      }else{
+        idx
+      }
+      })
+  )
+  
+  ms2_unique <- ms2[keep_indices]
+  
+  return(ms2_unique)
+}
+
+ms2 <- select_unique_MS2(ms2, ftms)
+spectraData(ms2)
+
+```
+
+
+In the below code we explore, for each
+sample (dataOrigin), if it still some MS2 spectra assigned to more than one
+feature. 
 ```{r}
 scanIndex.per.ori <- split(ms2$scanIndex, ms2$dataOrigin)
 lapply(scanIndex.per.ori, function(x) any(duplicated(x)))
 lapply(scanIndex.per.ori, function(x) x[duplicated(x)])
 ```
 
-Many MS2 spectra are indeed assigned to multiple features. We have a
+No MS2 spectra are indeed assigned to multiple features. We have a
 closer look at sample s1r3:
 
 ```{r}
@@ -102,9 +182,11 @@ spdat  <-spectraData(s1r3)
 spdat$scanIndex[duplicated(spdat$scanIndex)]
 ```
 
-In sample s1r3, the spectra with ScanIndex 381, 1540, and 1814 are
-duplicated in the ms2 Spectra object, because they are assigned to two
-different features.
+```{r}
+spdat[spdat$scanIndex == 381, ]
+```
+
+In sample s1r3, spectra are not assigned to a unique feature.
 
 ```{r}
 spdat[spdat$scanIndex == 1814,]
@@ -114,13 +196,7 @@ spdat_si381 <- spdat[spdat$scanIndex == 381,]
 spdat_si381$rtime - spdat_si381$feature_rtmed
 ```
 
-ScanIndex 1814 is assigned to two FeatureIDs: FT3146 and FT3149
-ScanIndex 1540 is assigned to two FeatureIDs: FT0870 and FT0871
-ScanIndex 381 is assigned to two FeatureIDs: FT0268 and FT0270 and their
-retention time is 30 seconds different. The retention time of the
-spectrum is closer to rtmed of feature FT0268
 
-But the precursor could indeed be a mixture of both features.
 
 # Extract all MS2-MSn spectra associated to features
 
@@ -134,9 +210,9 @@ spectra, with each spectrum linked to a feature via a propagated
 `feature_id` from the originally matched MS2 spectrum.
 
 ```{r}
-ftms_all_levels <- function(ftms) {
+ftms_all_levels <- function(ftms, ms2) {
 
-  ms2 <- featureSpectra(ftms, msLevel = 2)
+  #ms2 <- featureSpectra(ftms, msLevel = 2)
   cat("Number of MS2 spectra found:", length(ms2), "\n")
 
   res <- lapply(unique(ms2$dataOrigin), function(origin) {
@@ -161,7 +237,7 @@ ftms_all_levels <- function(ftms) {
     do.call(c, res)
 }
 
-ftms_msn_tree <- ftms_all_levels(ftms)
+ftms_msn_tree <- ftms_all_levels(ftms,ms2)
 
 table(msLevel(ftms_msn_tree))
 ```
@@ -186,7 +262,7 @@ spectraData(al[[1]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
 spectraData(al[[2]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
 #' This too.
 
-ft <- "FT0649"
+ft <- "FT0556"
 a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
 a
 
@@ -196,18 +272,7 @@ al <- split(a, a$dataOrigin)
 spectraData(al[[1]], columns = c("dataOrigin", "msLevel", "acquisitionNum", "precScanNum", "precursorMz")) |>
     as.data.frame()
 
-#' Looks correct. To feature FT0649, in sample S1R1, there are 4 MS2 spectra linked, which correctly have all the same precursorMz = 285. The four MS2 spectra have acquisitionNum 3851, 3870, 3905, and 3919.
-#' Let's see what filterPrecursorScan does
 
-filterPrecursorScan(al[[1]], 3851)
-filterPrecursorScan(al[[1]], 3870)
-filterPrecursorScan(al[[1]], 3905)
-filterPrecursorScan(al[[1]], 3919)
-
-spectraData(filterPrecursorScan(al[[1]], 3851), columns = c("msLevel", "acquisitionNum", "precScanNum", "precursorMz"))|>as.data.frame()
-spectraData(filterPrecursorScan(al[[1]], 3852), columns = c("msLevel", "acquisitionNum", "precScanNum", "precursorMz"))|>as.data.frame()
-spectraData(filterPrecursorScan(al[[1]], 3854), columns = c("msLevel", "acquisitionNum", "precScanNum", "precursorMz"))|>as.data.frame()
-#' Seems to be OK
 ```
 
 The above result shows that `filterPrecursorScan()` extracts the full
@@ -236,13 +301,7 @@ spdat[spdat$scanIndex %in% 1815:1817,]
 spdat[spdat$feature_id %in% c("FT3146","FT3149"),]
 spdat[spdat$feature_id %in% c("FT0268","FT0270"),]
 ```
-
-In ftms_msn_tree, MS2 that are assigned to multiple features, and all
-dependent spectra (MS3, and MS4), are present multiple times. For
-example: MS2_scandindex381 gives rise to MS3_scandindex382 and
-MS3_scandindex383. Because MS2_scandindex381 was assigned to both
-feature FT0268 and FT0270, these spectra are duplicated in
-ftms_msn_tree: with feature_id = FT0268 and with feature_id = FT0270.
+There is no feature assigned to multiple spectra
 
 # Grouping MSn spectra into fragmentation trees
 
@@ -265,50 +324,75 @@ The output of the `assign_msntree_id()` function is then added to the
 
 ```{r}
 
-assign_msntree_id <- function(x) {
-  ## Order x by MS level: ensures we first assign an ID to the MS2.
+assign_msntree_id_per_feature <- function(x) {
   o <- order(msLevel(x))
   x <- x[o]
-  scan_index <- scanIndex(x)
+
+  scan_index   <- scanIndex(x)
   prec_scan_num <- precScanNum(x)
-  ms_level <- msLevel(x)
-  data_origin <- dataOrigin(x)
+  ms_level     <- msLevel(x)
+  data_origin  <- dataOrigin(x)
+  feature_id   <- x$feature_id
 
   tree_id <- rep(NA_integer_, length(scan_index))
-  global_counter <- 0
 
-  for (origin in unique(data_origin)) {
-    idx <- which(data_origin == origin)
-    origin_scan_index <- scan_index[idx]
-    origin_prec_scan_num <- prec_scan_num[idx]
-    origin_ms_level <- ms_level[idx]
-    origin_tree_id <- rep(NA_integer_, length(idx))
+  # Iterate over features
+  for (feat in unique(feature_id)) {
+    feat_idx <- which(feature_id == feat)
+    feat_scan_index   <- scan_index[feat_idx]
+    feat_prec_scan_num <- prec_scan_num[feat_idx]
+    feat_ms_level     <- ms_level[feat_idx]
+    feat_origin       <- data_origin[feat_idx]
 
-    scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
+    # Counter per feature
+    feat_counter <- 0
+    feat_tree_id <- rep(NA_integer_, length(feat_idx))
 
-    for (i in seq_along(idx)) {
-      level <- origin_ms_level[i]
-      if (level == 2) {
-        ## If MS2 hasn't been assigned yet
-        if (is.na(origin_tree_id[i])) {
-          global_counter <- global_counter + 1
-          origin_tree_id[i] <- global_counter
+    # Loop per dataOrigin (optional if you have multiple files)
+    for (origin in unique(feat_origin)) {
+      idx <- which(feat_origin == origin)
+
+      origin_scan_index   <- feat_scan_index[idx]
+      origin_prec_scan_num <- feat_prec_scan_num[idx]
+      origin_ms_level     <- feat_ms_level[idx]
+
+      origin_tree_id <- rep(NA_integer_, length(idx))
+      scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
+      ms2_tree_map <- list()
+
+      for (i in seq_along(idx)) {
+        level <- origin_ms_level[i]
+
+        if (level == 2) {
+          this_scan <- origin_scan_index[i]
+          if (!is.null(ms2_tree_map[[as.character(this_scan)]])) {
+            origin_tree_id[i] <- ms2_tree_map[[as.character(this_scan)]]
+          } else {
+            feat_counter <- feat_counter + 1
+            origin_tree_id[i] <- feat_counter
+            ms2_tree_map[[as.character(this_scan)]] <- feat_counter
+          }
+        } else {
+          parent_scan <- origin_prec_scan_num[i]
+          parent_pos  <- scan_idx_map[as.character(parent_scan)]
+          if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1)) {
+            origin_tree_id[i] <- origin_tree_id[parent_pos]
+          } else {
+            stop("MS", level, " with ", length(parent_pos), " precursors")
+          }
         }
-      } else {
-        ## Assign ID of the related precursor ID
-        parent_scan <- origin_prec_scan_num[i]
-        parent_pos <- scan_idx_map[as.character(parent_scan)]
-        if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1))
-          origin_tree_id[i] <- origin_tree_id[parent_pos]
-        else
-          stop("MS", level, " with ", length(parent_pos), " precursors")
       }
+
+      feat_tree_id[idx] <- origin_tree_id
     }
-    tree_id[idx] <- origin_tree_id
+
+    # Make the IDs globally unique by prefixing with feature_id
+    tree_id[feat_idx] <- paste0(feat, "_", feat_tree_id)
   }
-  ## Return in original order
+
   return(tree_id[order(o)])
 }
+
 
 msntree_ids <- assign_msntree_id(ftms_msn_tree)
 
@@ -317,7 +401,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees:
+The total number of MSn trees is 2157:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -332,7 +416,7 @@ ftms_msn_tree$MSntreeID |>
     quantile()
 ```
 
-There is apparently (at least) one tree with 7 spectra. Extracting this
+There is apparently (at least) one tree with 4 spectra. Extracting this
 particular MSn tree.
 
 We will check MSntreeID of spectra that were assigned to multiple
@@ -356,212 +440,13 @@ max_tree$MSntreeID
 ```
 
 The MSntree with maximum number of spectra corresponds to the tree,
-within dataOrigin S1R3, depending on MS2 with ScanIndex 1814 which was
-assigned to two FeatureIDs: FT3146 and FT3149 Within dataOrigin S1R3,
-scanIndex 1815 (MS3), 1816 (MS3), and 1817 (MS4) are assigned to two
-different features: FT3146, and FT3149.
-
-```{r}
-al <- split(ftms_msn_tree, ftms_msn_tree$dataOrigin)
-S1R3 <- al[[3]]
-double_tree <- S1R3[S1R3$feature_id %in% c("FT3146","FT3149")]
-
-double_tree$rtime
-double_tree$msLevel
-double_tree$precScanNum
-double_tree$scanIndex
-double_tree$feature_id
-double_tree$MSntreeID
-```
-
-Now we check the MSntree corresponding to dataOrigin S1R3 - ScanIndex
-381, which was assigned to two FeatureIDs: FT0268 and FT0270
-
-```{r}
-al <- split(ftms_msn_tree, ftms_msn_tree$dataOrigin)
-S1R3 <- al[[3]]
-double_tree <- S1R3[S1R3$feature_id %in% c("FT0268","FT0270")]
-
-double_tree$rtime
-double_tree$msLevel
-double_tree$precScanNum
-double_tree$scanIndex
-double_tree$feature_id
-double_tree$MSntreeID
-```
-
-Observation of the duplicated spectral trees that were assigned to two
-features (the tree assigned to FT0268 and FT0270, and the trees assigned
-to FT3146 and FT3149) shows a mistake in the assembly of the MSntree
-groups, resulting from forcing MS2 spectra to start a new tree:
-
-Below, spectra are named by their scanIndex: 
-MSntreeID 334 comprises:
-381 (MS2 - FT0268), 382 (MS3 - FT0268), 383 (MS3 - FT0268) , **382 (MS3 -
-FT0270)**, **383 (MS3 - FT0270)**
-
-MSntreeID 336 comprises:
-**381 (MS2 - FT0270)**
-
-MSntreeID 335 comprises:
-324 (MS2 - FT0270), 326 (MS3 - FT0270)
-
-MSntreeID 433 comprises:
-1814 (MS2 - FT3146), 1815 (MS3 - FT3146), 1816 (MS3 - FT3146) , 1817 (MS4 - FT3146), **1815 (MS3 -
-FT3149)**, **1816 (MS3 - FT3149)**, **1817 (MS4 - FT3149)
-
-MSntree 444 comprises:
-**1814 (MS2 - FT3149)**
-
-**In both cases, the duplicated spectral tree that was assigned to another chromatographic feature, has been split: the MS2 spectrum was assigned to a new MSntree, whereas the higher level spectra were associated as doubles to the MSntree associated with the first chromatographic feature.**
-
-Below, we have a closer look at these two features.
-
-```{r}
-feat <- c("FT3146","FT3149")
-feat_idx <- ms2sp$feature_id %in% feat
-ms2sp[feat_idx,]
-```
-
-Features FT3146, and FT3149 have almost exactly the same mzmin and
-mzmax, but 10 seconds difference in rtmed. We have a look at EICs for
-these features.
-
-```{r}
-fdefs <- featureDefinitions(ftms)
-feature_ids <- rownames(fdefs) 
-#FT3146
-fid <- "FT3146"
-finfo <- fdefs[fid, ]
-eic1 <- chromatogram(
-  ftms,
-  mz = c(finfo$mzmin, finfo$mzmax),
-  rt = c(1000, 1100)
-)
-
-#FT3149
-fid <- "FT3149"
-finfo <- fdefs[fid, ]
-eic2 <- chromatogram(
-  ftms,
-  mz = c(finfo$mzmin, finfo$mzmax),
-  rt = c(1000, 1100)
-)
-
-par(mfrow = c(2, 1))
-plot(eic1)
-plot(eic2)
-
-```
+within dataOrigin S1R5, depending on MS2 with ScanIndex 103 which was
+assigned to one FeatureID: FT1717 Within dataOrigin S1R5,
+scanIndex 104 (MS3), 105 (MS3), and 106 (MS4) are assigned to a single
+feature: FT1717.
 
 
-```{r}
-fdefs <- featureDefinitions(ftms)
-feature_ids <- rownames(fdefs) 
-#FT0268
-fid <- "FT0268"
-finfo <- fdefs[fid, ]
-eic1 <- chromatogram(
-  ftms,
-  mz = c(finfo$mzmin, finfo$mzmax),
-  rt = c(150, 250)
-)
 
-#FT0270
-fid <- "FT0270"
-finfo <- fdefs[fid, ]
-eic2 <- chromatogram(
-  ftms,
-  mz = c(finfo$mzmin, finfo$mzmax),
-  rt = c(150, 250)
-)
-
-par(mfrow = c(2, 1))
-plot(eic1)
-plot(eic2)
-
-```
-
-# What to do with spectra assigned to multiple features?
-The chromatographic peaks of these two features are quite similar. Maybe we could merge the two features in case spectra are assigned to both. 
-We could also change the method of `featureSpectra()` to assign MS2 spectra to the single chromatographic feature that is closest in retention time (and within an m/z range) ==> each MSntree will be assigned to a single feature.
-In reality, these are probably two different isomers and the spectra are most probably derived from a mixture. 
-If we want to keep duplicated spectral trees assigned to different features, we need to modify the function `assign_msntree_id()`.
-When selecting an MSntree to add to the database, it is important to take the purity of the precursor into account. If an MS2 falls within mz and rt range of two features, it maybe not pure and priority could be given to spectra that can only be assigned to a single feature.
-
-# Merging two features in an XcmsExperiment object
-The code below merges two specific features in an XcmsExperiment object.
-Applying `ftms_all_levels()` and `assign_msntree_id`to the new XcmsExperiment object did not solve the problem, and the code needs to be optimized IF we decide that we want to go this way (merging peaks).
-
-```{r}
-# Manually merging two features in an XcmsExperiment object
-# Extract feature definitions, chromPeaks, and Sample Data
-fdefs <- featureDefinitions(ftms)
-cp <- chromPeaks(ftms)
-sdata <- sampleData(ftms)
-
-# Extract the two feature IDs to merge
-fid1 <- "FT3146"
-fid2 <- "FT3149"
-
-f1 <- fdefs[fid1, ]
-f2 <- fdefs[fid2, ]
-
-# Merge the peak indices
-merged_peakidx <- unique(c(unlist(f1$peakidx), unlist(f2$peakidx)))
-
-# Get sample indices for merged peaks
-sample_indices <- cp[merged_peakidx, "sample"]
-
-# Determine sample group membership
-sample_group_membership <- sdata$sample_id[sample_indices]
-sample_counts <- table(factor(sample_group_membership, levels = unique(sample_groups)))
-
-# Construct merged feature row
-merged_feature <- DataFrame(
-  mzmed = mean(c(f1$mzmed, f2$mzmed)),
-  mzmin = min(f1$mzmin, f2$mzmin),
-  mzmax = max(f1$mzmax, f2$mzmax),
-  rtmed = mean(c(f1$rtmed, f2$rtmed)),
-  rtmin = min(f1$rtmin, f2$rtmin),
-  rtmax = max(f1$rtmax, f2$rtmax),
-  npeaks = as.numeric(length(unique(sample_names))),
-  peakidx = I(list(merged_peakidx)),
-  ms_level = unique(c(f1$ms_level, f2$ms_level))
-)
-
-# Add per-group sample columns
-group_cols <- colnames(fdefs)[colnames(fdefs) %in% names(sample_counts)]
-for (grp in group_cols) {
-  merged_feature[[grp]] <- as.numeric(sample_counts[[grp]])
-}
-merged_feature <- merged_feature[, colnames(fdefs)]
-
-# Replace original features with merged one
-fdefs_new <- fdefs[!(rownames(fdefs) %in% c(fid1, fid2)), ]
-fdefs_new <- rbind(fdefs_new, as.data.frame(merged_feature))
-rownames(fdefs_new)[nrow(fdefs_new)] <- paste0(fid1, "_", fid2, "_merged")
-
-# Update the XcmsExperiment object
-featureDefinitions(ftms) <- fdefs_new
-
-
-```
-
-TODO: After merging two features: in spectraData of ftms_msn_tree
-(sampleOrigin S1R3), scanIndex 1815, 1816, 1817 are double. One should
-be removed.
-
-```{r}
-al <- split(ftms_msn_tree, ftms_msn_tree$dataOrigin)
-S1R3 <- al[[3]]
-spdat  <-spectraData(S1R3)
-spdat[spdat$scanIndex %in% 1815:1817,]
-
-```
-
-TODO: create code to check if MSn_trees are assigned to more than one
-feature
 
 ```{r}
 ## we stored the tree ids and the msLevels to a dataframe
@@ -579,9 +464,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 415 The number of trees
-that go up to MS3 level is : 338 The number of trees that go up to MS4
-level is : 926
+The number of trees that go up to MS2 level is : 727 The number of trees
+that go up to MS3 level is : 297 The number of trees that go up to MS4
+level is : 1133
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -630,7 +515,7 @@ msLevel(ftms_one_tree) |> table()
 ```
 
 after selecting one representative tree per feature we have now: MS2 :
-437, MS3 : 523, MS4 : 262
+519, MS3 : 573, MS4 : 285
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
@@ -643,13 +528,13 @@ length(unique(ftms_one_tree$feature_id))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 437 unique feature and unique MSntreeID, That's mean that we
+we have 519 unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree_sh.RData"))
 ```
 
 # Session information
