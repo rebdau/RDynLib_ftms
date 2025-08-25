@@ -39,7 +39,7 @@ First we load the `XcmsExperiment` ftms object
 
 ```{r}
 
-load(file.path(pth, "data", "ftms_sh.RData"))
+load(file.path(pth, "data", "ftms_sh_minfr.RData"))
 class(ftms)
 ```
 
@@ -65,7 +65,7 @@ spectraData(ms2)
 ```
 
 
-it returns 2755 MS level 2 spectra. The total number of features for
+it returns 4329 MS level 2 spectra. The total number of features for
 which an MS2 spectrum was identified is:
 
 ```{r}
@@ -81,7 +81,7 @@ table(msLevel(s))
 ```
 
 In total, there were 20804 MS2 spectra. This means that 86% of the MS2
-spectra ((20804-1679)\*100/20804) could not be assigned to any
+spectra ((20804-4329)\*100/20804) could not be assigned to any
 chromatographic peak.
 
 The percentage of features with at least one MS2:
@@ -99,7 +99,7 @@ perc_features_with_ms2
 
 
 ```
-The percentage of features with at least one MS2 is 49%
+The percentage of features with at least one MS2 is 47%
 
 the percentage of MS2 spectra that are assigned to a feature
 
@@ -115,7 +115,7 @@ perc_ms2_assigned <- (n_assigned_ms2 / n_total_ms2) * 100
 perc_ms2_assigned
 
 ```
-the percentage of MS2 spectra that are assigned to a feature is 15%
+the percentage of MS2 spectra that are assigned to a feature is 23%
 
 Now we will keep just one MS2 the closest in retention time if there is more
 than one MS2 spectra linked to the same feature.
@@ -246,7 +246,7 @@ Checking the MSn data for one feature - and evaluate if the relationship
 between the MSn spectra is correct.
 
 ```{r}
-ft <- "FT4282"
+ft <- "FT1287"
 
 a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
 a
@@ -262,7 +262,7 @@ spectraData(al[[1]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
 spectraData(al[[2]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
 #' This too.
 
-ft <- "FT0556"
+ft <- "FT6908"
 a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
 a
 
@@ -275,14 +275,6 @@ spectraData(al[[1]], columns = c("dataOrigin", "msLevel", "acquisitionNum", "pre
 
 ```
 
-The above result shows that `filterPrecursorScan()` extracts the full
-MSn tree: it includes spectra of levels MS2 or higher
-
--   whose acquisition number itself matches the given Precursor scan
-    number
--   AND whose precScanNum matches the given Precursor scan number
--   AND higher level spectra that depend on it
--   AND lower level spectra that gave rise to it
 
 The number of spectra from different MS levels is shown below:
 
@@ -324,75 +316,50 @@ The output of the `assign_msntree_id()` function is then added to the
 
 ```{r}
 
-assign_msntree_id_per_feature <- function(x) {
+assign_msntree_id <- function(x) {
+  ## Order x by MS level: ensures we first assign an ID to the MS2.
   o <- order(msLevel(x))
   x <- x[o]
-
-  scan_index   <- scanIndex(x)
+  scan_index <- scanIndex(x)
   prec_scan_num <- precScanNum(x)
-  ms_level     <- msLevel(x)
-  data_origin  <- dataOrigin(x)
-  feature_id   <- x$feature_id
+  ms_level <- msLevel(x)
+  data_origin <- dataOrigin(x)
 
   tree_id <- rep(NA_integer_, length(scan_index))
+  global_counter <- 0
 
-  # Iterate over features
-  for (feat in unique(feature_id)) {
-    feat_idx <- which(feature_id == feat)
-    feat_scan_index   <- scan_index[feat_idx]
-    feat_prec_scan_num <- prec_scan_num[feat_idx]
-    feat_ms_level     <- ms_level[feat_idx]
-    feat_origin       <- data_origin[feat_idx]
+  for (origin in unique(data_origin)) {
+    idx <- which(data_origin == origin)
+    origin_scan_index <- scan_index[idx]
+    origin_prec_scan_num <- prec_scan_num[idx]
+    origin_ms_level <- ms_level[idx]
+    origin_tree_id <- rep(NA_integer_, length(idx))
 
-    # Counter per feature
-    feat_counter <- 0
-    feat_tree_id <- rep(NA_integer_, length(feat_idx))
+    scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
 
-    # Loop per dataOrigin (optional if you have multiple files)
-    for (origin in unique(feat_origin)) {
-      idx <- which(feat_origin == origin)
-
-      origin_scan_index   <- feat_scan_index[idx]
-      origin_prec_scan_num <- feat_prec_scan_num[idx]
-      origin_ms_level     <- feat_ms_level[idx]
-
-      origin_tree_id <- rep(NA_integer_, length(idx))
-      scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
-      ms2_tree_map <- list()
-
-      for (i in seq_along(idx)) {
-        level <- origin_ms_level[i]
-
-        if (level == 2) {
-          this_scan <- origin_scan_index[i]
-          if (!is.null(ms2_tree_map[[as.character(this_scan)]])) {
-            origin_tree_id[i] <- ms2_tree_map[[as.character(this_scan)]]
-          } else {
-            feat_counter <- feat_counter + 1
-            origin_tree_id[i] <- feat_counter
-            ms2_tree_map[[as.character(this_scan)]] <- feat_counter
-          }
-        } else {
-          parent_scan <- origin_prec_scan_num[i]
-          parent_pos  <- scan_idx_map[as.character(parent_scan)]
-          if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1)) {
-            origin_tree_id[i] <- origin_tree_id[parent_pos]
-          } else {
-            stop("MS", level, " with ", length(parent_pos), " precursors")
-          }
+    for (i in seq_along(idx)) {
+      level <- origin_ms_level[i]
+      if (level == 2) {
+        ## If MS2 hasn't been assigned yet
+        if (is.na(origin_tree_id[i])) {
+          global_counter <- global_counter + 1
+          origin_tree_id[i] <- global_counter
         }
+      } else {
+        ## Assign ID of the related precursor ID
+        parent_scan <- origin_prec_scan_num[i]
+        parent_pos <- scan_idx_map[as.character(parent_scan)]
+        if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1))
+          origin_tree_id[i] <- origin_tree_id[parent_pos]
+        else
+          stop("MS", level, " with ", length(parent_pos), " precursors")
       }
-
-      feat_tree_id[idx] <- origin_tree_id
     }
-
-    # Make the IDs globally unique by prefixing with feature_id
-    tree_id[feat_idx] <- paste0(feat, "_", feat_tree_id)
+    tree_id[idx] <- origin_tree_id
   }
-
+  ## Return in original order
   return(tree_id[order(o)])
 }
-
 
 msntree_ids <- assign_msntree_id(ftms_msn_tree)
 
@@ -401,7 +368,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees is 2157:
+The total number of MSn trees is 2952:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -441,9 +408,9 @@ max_tree$MSntreeID
 
 The MSntree with maximum number of spectra corresponds to the tree,
 within dataOrigin S1R5, depending on MS2 with ScanIndex 103 which was
-assigned to one FeatureID: FT1717 Within dataOrigin S1R5,
+assigned to one FeatureID: FT3875 Within dataOrigin S1R5,
 scanIndex 104 (MS3), 105 (MS3), and 106 (MS4) are assigned to a single
-feature: FT1717.
+feature: FT3875.
 
 
 
@@ -464,9 +431,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 727 The number of trees
-that go up to MS3 level is : 297 The number of trees that go up to MS4
-level is : 1133
+The number of trees that go up to MS2 level is : 1403 The number of trees
+that go up to MS3 level is : 329 The number of trees that go up to MS4
+level is : 1220
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -515,7 +482,7 @@ msLevel(ftms_one_tree) |> table()
 ```
 
 after selecting one representative tree per feature we have now: MS2 :
-519, MS3 : 573, MS4 : 285
+682, MS3 : 637, MS4 : 305
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
@@ -528,13 +495,13 @@ length(unique(ftms_one_tree$feature_id))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 519 unique feature and unique MSntreeID, That's mean that we
+we have 682 unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree_sh.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree_sh_minfr.RData"))
 ```
 
 # Session information
