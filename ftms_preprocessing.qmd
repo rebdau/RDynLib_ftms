@@ -60,7 +60,7 @@ now we import our dataset
 
 ```{r}
 sample_data_ftms <- read_xlsx(
-    file.path(pth, "data/sample_data/ftms_data_files.xlsx")) |>
+    file.path(pth, "data/ftms_data_files.xlsx")) |>
     as.data.frame()
 MZML_PATH <- file.path(pth,"data","mzML")
 ftms <- readMsExperiment(file.path(MZML_PATH, sample_data_ftms$data_file),
@@ -251,7 +251,7 @@ chromatogram.
 
 ```{r}
 a_kn2 <- findChromPeaks(a_kn, CentWaveParam(peakwidth = c(20, 80),
-                                            integrate = 2))
+                                            integrate = 2, snthresh = 2))
 
 ```
 
@@ -311,7 +311,7 @@ the data should be loaded into memory at a time.
 
 ```{r}
 ftms <- findChromPeaks(
-    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2),
+    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2, snthresh = 2),
     chunkSize = 2)
 ```
 
@@ -376,7 +376,7 @@ a_2 <- chromatogram(ftms, aggregationFun = "max", mz = mzr)
 #' Configure settings
 
 pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
-                        bw = 6, minFraction = 0.5)
+                        bw = 6, minFraction = 0.3)
 
 #' Evaluate settings on the full range
 plotChromPeakDensity(
@@ -544,7 +544,7 @@ signal.
 ```{r}
 #' Configure settings
 pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
-                        bw = 2, minFraction = 0.5)
+                        bw = 2, minFraction = 0.3)
 
 #' Evaluate settings on the full range
 plotChromPeakDensity(a_adj, param = pdp, col = col_sample_ftms)
@@ -590,7 +590,7 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = file.path(pth, "data", "ftms.RData"))
+save(ftms, file = file.path(pth, "data", "ftms_sh_minfr.RData"))
 ```
 
 ```{r}
@@ -609,7 +609,7 @@ We next save the raw and adjusted BPC to a image file.
 #' Define the file path where to save the image
 dr <- "images/ftms_glob/"
 dir.create(dr, showWarnings = FALSE, recursive = TRUE)
-png(file.path(dr, "ftms-bpc-aligned.png"), width = 14, height = 10,
+png(file.path(dr, "ftms-bpc-aligned_sh_min.png"), width = 14, height = 10,
     units = "cm", res = 600, pointsize = 4)
 
 par(mfrow = c(2, 1))
