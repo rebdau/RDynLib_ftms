@@ -117,51 +117,94 @@ perc_ms2_assigned
 ```
 the percentage of MS2 spectra that are assigned to a feature is 23%
 
-Now we will keep just one MS2 the closest in retention time if there is more
-than one MS2 spectra linked to the same feature.
-First we select the duplicated MS2 spectra for that we select those with the
-same dataOrigin, same acquisitionNum, and different feature_id. and from those 
-duplicated MS2 spectra we keep just one with a retention time close to the
-retention time of the feature
+Now, we will keep only one MS2 spectrum for that if more than one MS2 spectrum 
+is linked to the same feature. First, we select the duplicated MS2 spectra by 
+identifying those with the same dataOrigin and acquisitionNum but different
+feature_id. From these duplicated MS2 spectra, we then check whether an MS2 
+spectrum is associated with the same feature across multiple samples.
+In this case, we keep the feature with the maximum occurrences.
+Otherwise, if the MS2 spectrum is linked to each feature only once, 
+we keep the one with a retention time closest to that of the feature.
 
 ```{r}
 
 select_unique_MS2 <- function(ms2, ftms){
   sp <- spectraData(ms2)
   
-  #Create indices for the duplicated groupes (i.e: dataOrigine + acquisitionNum)
-  sp$groupID <- paste0(sp$dataOrigine, "_", sp$acquisitionNum)
-  
-  #Group Indices by groupID
+  # Group by dataOrigin and acquisitionNum
+  sp$groupID <- paste0(sp$dataOrigin, "_", sp$acquisitionNum)
   groups <- split(1:nrow(sp), sp$groupID)
   
-  #List to store indices that we will keep
-  keep_indices <- unlist(
-    lapply(groups, function(idx){
-      #keep just the indices that have different feature_id
-      if(length(unique(sp$feature_id[idx])) > 1){
-        #Calclate the difference between the RT of each MS2 spectra with
-        #the RT of the feature that is assigned to 
-        rt_diff <- abs(rtime(ms2)[idx] - featureDefinitions(ftms)[sp$feature_id[idx], "rtmed"])
-        
-        #keep the index with the smallest RT difference
-        idx[which.min(rt_diff)]
-      }else{
-        idx
-      }
+  keep_indices <- c()
+  occurrence <- logical(length=nrow(sp))
+  alt_feature <- rep(NA_character_, nrow(sp))
+  
+  # Calculate the number of occurrences for the feature_id and dataOrigin couple 
+  # (note: acquisitionNum is not considered here) and store it in a table 
+  feature_table <- xtabs(~ feature_id + dataOrigin, data = sp)
+  
+  for (idx in groups) {
+    # store feature indexes of the duplicated MS2 spectra
+    feature_ids <- sp$feature_id[idx]
+    
+    # Check if feature_ids are different
+    if(length(unique(feature_ids)) > 1){
+      
+      # number of samples (dataOrigin) where the feature occurs exactly once
+      cross_occurrences <- sapply(unique(feature_ids), function(f){
+        sum(feature_table[f, ] == 1)  
       })
-  )
+      
+      if(any(cross_occurrences > 0)){
+        # Choose the feature_id that is unambiguous in other samples
+        # (i.e. the feature that occurs exactly once in more samples)
+        chosen_feature <- names(cross_occurrences)[which.max(cross_occurrences)]
+        chosen <- idx[sp$feature_id[idx] == chosen_feature][1]
+      } else {
+        # Otherwise choose by closest RT
+        rt_diff <- abs(rtime(ms2)[idx] - featureDefinitions(ftms)[feature_ids, "rtmed"])
+        chosen <- idx[which.min(rt_diff)]
+      }
+      
+      keep_indices <- c(keep_indices, chosen)
+      occurrence[chosen] <- TRUE
+      
+      # Store the removed feature_ids
+      alt_ids <- setdiff(feature_ids, sp$feature_id[chosen])
+      alt_feature[chosen] <- paste(alt_ids, collapse=";")
+      
+    } else {
+      keep_indices <- c(keep_indices, idx)
+    }
+  }
   
   ms2_unique <- ms2[keep_indices]
+  spectraData(ms2_unique)$alt_feature_id <- alt_feature[keep_indices]
   
   return(ms2_unique)
 }
+
+
 
 ms2 <- select_unique_MS2(ms2, ftms)
 spectraData(ms2)
 
 ```
 
+
+
+Verification
+```{r}
+sp <- spectraData(ms2)
+
+# Extract indices where alt_feature_id is different to NA
+idx <- which(!is.na(sp$alt_feature_id))
+
+#Extract those lines
+ambiguous_spectra <- sp[idx, ]
+ambiguous_spectra
+```
+there is 400 line with alt_feature_id different to NA from 3907
 
 In the below code we explore, for each
 sample (dataOrigin), if it still some MS2 spectra assigned to more than one
@@ -368,7 +411,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees is 2952:
+The total number of MSn trees is 3907:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -407,10 +450,10 @@ max_tree$MSntreeID
 ```
 
 The MSntree with maximum number of spectra corresponds to the tree,
-within dataOrigin S1R5, depending on MS2 with ScanIndex 103 which was
-assigned to one FeatureID: FT3875 Within dataOrigin S1R5,
-scanIndex 104 (MS3), 105 (MS3), and 106 (MS4) are assigned to a single
-feature: FT3875.
+within dataOrigin S1R1, depending on MS2 with ScanIndex 102 which was
+assigned to one FeatureID: FT3099 Within dataOrigin S1R1,
+scanIndex 103 (MS3), 104 (MS3), and 105 (MS4) are assigned to a single
+feature: FT3099.
 
 
 
@@ -431,9 +474,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 1403 The number of trees
-that go up to MS3 level is : 329 The number of trees that go up to MS4
-level is : 1220
+The number of trees that go up to MS2 level is : 1943 The number of trees
+that go up to MS3 level is : 427 The number of trees that go up to MS4
+level is : 1537
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -482,7 +525,7 @@ msLevel(ftms_one_tree) |> table()
 ```
 
 after selecting one representative tree per feature we have now: MS2 :
-682, MS3 : 637, MS4 : 305
+712, MS3 : 675, MS4 : 321
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
@@ -495,13 +538,13 @@ length(unique(ftms_one_tree$feature_id))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 682 unique feature and unique MSntreeID, That's mean that we
+we have 712 unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree_sh_minfr.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "unique_tree_ftms.RData"))
 ```
 
 # Session information
