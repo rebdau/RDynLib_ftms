@@ -62,6 +62,8 @@ ms2 <- featureSpectra(ftms, msLevel = 2)
 msLevel(ms2) |>
   table()
 ```
+
+
 ```{r}
 spectraData(ms2)
 ```
@@ -250,6 +252,16 @@ ms2 <- select_unique_MS2(ms2, ftms)
 spectraData(ms2)
 ```
 at least we have 3660 MS2 spectra
+
+
+
+```{r}
+length(unique(unlist(ms2$feature_id)))
+length(ms2$feature_id)
+```
+we have 694 unique feature
+
+
 
 Verification
 ```{r}
@@ -497,73 +509,54 @@ precursor intensity
 
 ```{r}
 
-filtered_trees_spectra <- function(db) {
-
-  # Extract only the needed metadata 
-  sps_data <- as.data.frame(
-    spectraData(db)[, c("feature_id", "MSntreeID", "msLevel", "precursorIntensity")]
+unique_tree_feature <- function(db) {
+  # Store MS2 indices
+  ms2_idx <- which(msLevel(db) == 2)
+  
+  # Table of linked MS2 features only
+  feat_ms2 <- data.frame(
+    idx = ms2_idx,
+    feature_id = sapply(db$feature_id[ms2_idx], function(x) x[1]),  
+    MSntreeID = db$MSntreeID[ms2_idx],
+    precursorIntensity = db$precursorIntensity[ms2_idx]
   )
-
-  # Split by feature_id
-  feat_block <- split(sps_data, f = sps_data$feature_id)
-
-  # Selection function applied to each feature block
-  selection <- function(feature_block) {
-    
-    tbl <- table(feature_block$MSntreeID)
-    max_number <- max(tbl)
-    FTmax <- names(tbl)[tbl == max_number]
-
-    # Keep only candidates with the most frequent MSntreeID
-    feat_block_sel1 <- feature_block[feature_block$MSntreeID %in% as.numeric(FTmax), ]
-
-    # Keep only MS2
-    feat_block_sel1_MS2 <- feat_block_sel1[feat_block_sel1$msLevel == 2, ]
-    if (nrow(feat_block_sel1_MS2) == 0) return(NULL)
-
-    # Select the one with the highest precursor intensity
-    index <- which.max(feat_block_sel1_MS2$precursorIntensity)
-    selected_FT <- feat_block_sel1_MS2$MSntreeID[index]
-
-    # Return all spectra belonging to that chosen MSntreeID
-    feature_block[feature_block$MSntreeID == selected_FT, ]
-  }
-
-  # Apply selection across all feature blocks
-  selected_trees_list <- lapply(feat_block, selection)
-  selected_trees_df <- do.call(rbind, selected_trees_list)
-
- 
-  keep_idx <- match(selected_trees_df$MSntreeID, db$MSntreeID, nomatch = 0)
-  selected_sps <- db[keep_idx]
-
-  return(selected_sps)
+  
+  # for each feature choose the longest tree and the one with the highest
+  #precursorIntensity()  in case of tie
+  selected_tree_ids <- tapply(seq_len(nrow(feat_ms2)), feat_ms2$feature_id, function(i) {
+    #the longest tree 
+    tbl <- table(feat_ms2$MSntreeID[i])
+    FTmax <- as.numeric(names(tbl)[tbl == max(tbl)])
+    #the highest precursorIntensity()
+    sub_idx <- i[feat_ms2$MSntreeID[i] %in% FTmax]
+    sub_idx[which.max(feat_ms2$precursorIntensity[sub_idx])]
+  })
+  
+  tree_ids_keep <- feat_ms2$MSntreeID[unlist(selected_tree_ids)]
+  db[which(db$MSntreeID %in% tree_ids_keep)]
 }
 
-
-ftms_one_tree <- filtered_trees_spectra(ftms_msn_tree)
+ftms_one_tree <- unique_tree_feature(ftms_msn_tree)
 
 msLevel(ftms_one_tree) |> table()
-
 ```
 
-after selecting one representative tree per feature we have now: MS2 :
-
-
+after selecting one representative tree per feature we have now: 
+MS2 : 694 and MS3 : 614 and MS4 : 292
 
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
 
 ```{r}
-length(unique(ftms_one_tree$feature_id))
+length(unique(unlist(ftms_one_tree$feature_id)))
 ```
 
 ```{r}
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have *** unique feature and unique MSntreeID, That's mean that we
+we have 694 unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
