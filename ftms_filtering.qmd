@@ -30,6 +30,8 @@ library(xcms)
 library(MsExperiment)
 library(Spectra)
 library(readxl)
+library(IRanges)   
+library(S4Vectors)  
 register(SerialParam())
 pth <- getwd()
 pth
@@ -120,91 +122,148 @@ the percentage of MS2 spectra that are assigned to a feature is 23%
 Now, we will keep only one MS2 spectrum for that if more than one MS2 spectrum 
 is linked to the same feature. First, we select the duplicated MS2 spectra by 
 identifying those with the same dataOrigin and acquisitionNum but different
-feature_id. From these duplicated MS2 spectra, we then check whether an MS2 
-spectrum is associated with the same feature across multiple samples.
-In this case, we keep the feature with the maximum occurrences.
-Otherwise, if the MS2 spectrum is linked to each feature only once, 
-we keep the one with a retention time closest to that of the feature.
+feature_id to detect duplicates assigned to multiple features. From these 
+duplicated MS2 spectra, we then check first(caseA) if a feature has unique 
+MS2 spectra elsewhere, its assignment in the duplicated group is removed and 
+the others are flagged as ambiguous. Then (case B), if no feature has unique 
+spectra, we keep the feature whose retention time is closest or whose
+chromatographic intensity is strongest (top 10%), and mark the rest 
+as ambiguous.
+Thus, each MS2 spectrum is finally linked to only one feature, while alternative
+links are marked as ambiguous.
 
 ```{r}
-
-select_unique_MS2 <- function(ms2, ftms){
+select_unique_MS2 <- function(ms2, ftms) {
+  
   sp <- spectraData(ms2)
   
-  # Group by dataOrigin and acquisitionNum
-  sp$groupID <- paste0(sp$dataOrigin, "_", sp$acquisitionNum)
-  groups <- split(1:nrow(sp), sp$groupID)
+  # Create a unique identifier for each unique groupe of (dataOrigin, scanIndex)
+  sp$groups <- paste0(sp$dataOrigin, "_", sp$scanIndex)
   
-  keep_indices <- c()
-  occurrence <- logical(length=nrow(sp))
-  alt_feature <- rep(NA_character_, nrow(sp))
+  # Create indices for duplicated groups 
+  group_idx <- split(seq_len(nrow(sp)), sp$groups)
   
-  # Calculate the number of occurrences for the feature_id and dataOrigin couple 
-  # (note: acquisitionNum is not considered here) and store it in a table 
+  # Initialization
+  final_feature <- vector("list", nrow(sp))  # For the chosen features
+  amb_f <- vector("list", nrow(sp))          # For ambiguous features
+  
+  # Table of occurences for each feature in a dataOrigine
   feature_table <- xtabs(~ feature_id + dataOrigin, data = sp)
   
-  for (idx in groups) {
-    # store feature indexes of the duplicated MS2 spectra
-    feature_ids <- sp$feature_id[idx]
+  # Loop on each group
+  for (gname in names(group_idx)) {
+    # line indices of each group
+    gidx <- group_idx[[gname]]  
+    # all features that were assigned to the current group
+    feature_ids <- unique(unlist(sp$feature_id[gidx]))  
     
-    # Check if feature_ids are different
-    if(length(unique(feature_ids)) > 1){
+    # if a scanIndex was assigned to a unique feature, we don't do anything
+    if (length(feature_ids) == 1) {
+      final_feature[[gidx[1]]] <- feature_ids
+      amb_f[[gidx[1]]] <- character(0)
+      next  # go to the next group...
+    }
+    
+    #rt of the first group
+    ms2_rt <- rtime(ms2)[gidx[1]]
+    
+    # Identify sample name based on the path in dataStorage
+    fname <- basename(sp$dataStorage[gidx[1]])
+    sample_col <- sub("R[0-9]+\\.mzML$", "", fname)
+    
+    # rtmed and intensity of the feature
+    rt_features <- featureDefinitions(ftms)[feature_ids, "rtmed"]
+    int_features <- featureDefinitions(ftms)[feature_ids, sample_col]
+    
+    # Initialisation
+    keep_feat <- character(0) #features to keep
+    amb_feat <- feature_ids #ambiguous features
+    
+    # Loop on each feature in the group
+    for (i in seq_along(feature_ids)) {
+      i_id <- feature_ids[i]
       
-      # number of samples (dataOrigin) where the feature occurs exactly once
-      cross_occurrences <- sapply(unique(feature_ids), function(f){
-        sum(feature_table[f, ] == 1)  
-      })
-      
-      if(any(cross_occurrences > 0)){
-        # Choose the feature_id that is unambiguous in other samples
-        # (i.e. the feature that occurs exactly once in more samples)
-        chosen_feature <- names(cross_occurrences)[which.max(cross_occurrences)]
-        chosen <- idx[sp$feature_id[idx] == chosen_feature][1]
-      } else {
-        # Otherwise choose by closest RT
-        rt_diff <- abs(rtime(ms2)[idx] - featureDefinitions(ftms)[feature_ids, "rtmed"])
-        chosen <- idx[which.min(rt_diff)]
+      # Case A 
+      # Verify if a feature was assigned at least once to a unique MS2 so it's
+      #an unambigious feature
+      unamb_f <- any(feature_table[i_id, ] == 1)
+      if (unamb_f) {
+        # If yes we remove it's assignation to this scanIndex and 
+        #we marque other features as ambiguous
+        next  # go to the next feature...
       }
       
-      keep_indices <- c(keep_indices, chosen)
-      occurrence[chosen] <- TRUE
+      # Case B
+      # Calculate the RT ratio 
+      num <- abs(ms2_rt - rt_features[i])
+      ratios_rt <- sapply(seq_along(feature_ids)[-i], function(j) {
+        denom <- abs(ms2_rt - rt_features[j])
+        if (denom == 0) return(Inf)
+        num / denom
+      })
       
-      # Store the removed feature_ids
-      alt_ids <- setdiff(feature_ids, sp$feature_id[chosen])
-      alt_feature[chosen] <- paste(alt_ids, collapse=";")
+      # Calculate the intensity ratio 
+      ratios_int <- sapply(seq_along(feature_ids)[-i], function(j) {
+        denom <- int_features[j]
+        if (is.na(denom) || denom <= 0) return(NA_real_)
+        int_features[i] / denom
+      })
+      ratios_int <- ratios_int[!is.na(ratios_int)]
       
-    } else {
-      keep_indices <- c(keep_indices, idx)
+      # Condition RT
+      keep_rt <- which(ratios_rt < 1)  # keep features with ratio < 1
+      if (length(keep_rt) > 0) {
+        thr <- quantile(ratios_rt[keep_rt], 0.1)  # top 10% of the smallest rt
+        if (any(ratios_rt[keep_rt] <= thr)) keep_feat <- c(keep_feat, i_id)
+      }
+      
+      #Intensity condition
+      keep_int <- which(ratios_int > 1)  # keep features with int ratio> 1
+      if (length(keep_int) > 0) {
+        thr <- quantile(ratios_int[keep_int], 0.9)  # top 10% of the highest rt
+        if (any(ratios_int[keep_int] >= thr)) keep_feat <- c(keep_feat, i_id)
+      }
     }
+    
+    # Upate the features to keep and the ambiguous ones
+    final_feature[[gidx[1]]] <- unique(keep_feat)
+    amb_f[[gidx[1]]] <- setdiff(feature_ids, keep_feat)
   }
   
-  ms2_unique <- ms2[keep_indices]
-  spectraData(ms2_unique)$alt_feature_id <- alt_feature[keep_indices]
+  # Create a new spectra object with the updated features_id and ambiguous column
+  ms2_res <- ms2
+  spectraData(ms2_res)$feature_id <- CharacterList(final_feature)
+  spectraData(ms2_res)$ambiguous <- CharacterList(amb_f)
   
-  return(ms2_unique)
+  # Remove duplicates
+  keep <- sapply(final_feature, length) > 0
+  ms2_res <- ms2_res[keep]
+  
+  return(ms2_res)
 }
+
+
 
 
 
 ms2 <- select_unique_MS2(ms2, ftms)
 spectraData(ms2)
-
 ```
-
-
+at least we have 3660 MS2 spectra
 
 Verification
 ```{r}
 sp <- spectraData(ms2)
 
-# Extract indices where alt_feature_id is different to NA
-idx <- which(!is.na(sp$alt_feature_id))
+# Extract indices where ambiguous is not empty
+idx <- which(lengths(sp$ambiguous) > 0)
 
-#Extract those lines
+# Extract those rows
 ambiguous_spectra <- sp[idx, ]
 ambiguous_spectra
+
 ```
-there is 400 line with alt_feature_id different to NA from 3907
+there is 133 line with alt_feature_id different to NA from 3907
 
 In the below code we explore, for each
 sample (dataOrigin), if it still some MS2 spectra assigned to more than one
@@ -285,38 +344,7 @@ ftms_msn_tree <- ftms_all_levels(ftms,ms2)
 table(msLevel(ftms_msn_tree))
 ```
 
-Checking the MSn data for one feature - and evaluate if the relationship
-between the MSn spectra is correct.
 
-```{r}
-ft <- "FT1287"
-
-a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
-a
-
-#' split by dataOrigin
-al <- split(a, a$dataOrigin)
-
-al[[1]]
-
-spectraData(al[[1]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
-#' This looks correct. Testing the next
-
-spectraData(al[[2]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
-#' This too.
-
-ft <- "FT6908"
-a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
-a
-
-#' split by dataOrigin
-al <- split(a, a$dataOrigin)
-
-spectraData(al[[1]], columns = c("dataOrigin", "msLevel", "acquisitionNum", "precScanNum", "precursorMz")) |>
-    as.data.frame()
-
-
-```
 
 
 The number of spectra from different MS levels is shown below:
@@ -325,18 +353,6 @@ The number of spectra from different MS levels is shown below:
 table(msLevel(ftms_msn_tree))
 ```
 
-We check MSn trees propagated from MS2 spectra that were assigned to
-multiple chromatographic features.
-
-```{r}
-al <- split(ftms_msn_tree, ftms_msn_tree$dataOrigin)
-S1R3 <- al[[3]]
-spdat  <-spectraData(S1R3)
-spdat[spdat$scanIndex %in% 1815:1817,]
-spdat[spdat$feature_id %in% c("FT3146","FT3149"),]
-spdat[spdat$feature_id %in% c("FT0268","FT0270"),]
-```
-There is no feature assigned to multiple spectra
 
 # Grouping MSn spectra into fragmentation trees
 
@@ -411,7 +427,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees is 3907:
+The total number of MSn trees is 3660:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -426,11 +442,8 @@ ftms_msn_tree$MSntreeID |>
     quantile()
 ```
 
-There is apparently (at least) one tree with 4 spectra. Extracting this
-particular MSn tree.
-
-We will check MSntreeID of spectra that were assigned to multiple
-chromatographic features.
+There is apparently (at least) one tree with 4 spectra.
+Extracting this particular MSn tree.
 
 ```{r}
 max_index <- ftms_msn_tree$MSntreeID |>
@@ -450,10 +463,10 @@ max_tree$MSntreeID
 ```
 
 The MSntree with maximum number of spectra corresponds to the tree,
-within dataOrigin S1R1, depending on MS2 with ScanIndex 102 which was
-assigned to one FeatureID: FT3099 Within dataOrigin S1R1,
-scanIndex 103 (MS3), 104 (MS3), and 105 (MS4) are assigned to a single
-feature: FT3099.
+within dataOrigin S1R1, depending on MS2 with ScanIndex 2182 which was
+assigned to one FeatureID: FT2705 Within dataOrigin S1R1,
+scanIndex 2183 (MS3), 2184 (MS3), and 2185 (MS4) are assigned to a single
+feature: FT2705.
 
 
 
@@ -474,9 +487,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 1943 The number of trees
-that go up to MS3 level is : 427 The number of trees that go up to MS4
-level is : 1537
+The number of trees that go up to MS2 level is : 1803 The number of trees
+that go up to MS3 level is : 405 The number of trees that go up to MS4
+level is : 1452
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -486,24 +499,33 @@ precursor intensity
 
 filtered_trees_spectra <- function(db) {
 
-  # Extract metadata from the Spectra object
-  sps_data <- as.data.frame(spectraData(db))
+  # Extract only the needed metadata 
+  sps_data <- as.data.frame(
+    spectraData(db)[, c("feature_id", "MSntreeID", "msLevel", "precursorIntensity")]
+  )
 
   # Split by feature_id
   feat_block <- split(sps_data, f = sps_data$feature_id)
 
   # Selection function applied to each feature block
   selection <- function(feature_block) {
-    #Select the most frequent MSnTreeID
-    max_number <- max(table(feature_block$MSntreeID))
-    FTmax <- names(table(feature_block$MSntreeID))[table(feature_block$MSntreeID) == max_number]
-    feat_block_sel1 <- feature_block[feature_block$MSntreeID %in% as.numeric(FTmax), ]
-    feat_block_sel1_MS2 <- feat_block_sel1[feat_block_sel1$msLevel == 2, ]
+    
+    tbl <- table(feature_block$MSntreeID)
+    max_number <- max(tbl)
+    FTmax <- names(tbl)[tbl == max_number]
 
+    # Keep only candidates with the most frequent MSntreeID
+    feat_block_sel1 <- feature_block[feature_block$MSntreeID %in% as.numeric(FTmax), ]
+
+    # Keep only MS2
+    feat_block_sel1_MS2 <- feat_block_sel1[feat_block_sel1$msLevel == 2, ]
     if (nrow(feat_block_sel1_MS2) == 0) return(NULL)
-    #Select the one with the highest MS2 precursor Intensity
-    index <- order(feat_block_sel1_MS2$precursorIntensity, decreasing = TRUE)[1]
+
+    # Select the one with the highest precursor intensity
+    index <- which.max(feat_block_sel1_MS2$precursorIntensity)
     selected_FT <- feat_block_sel1_MS2$MSntreeID[index]
+
+    # Return all spectra belonging to that chosen MSntreeID
     feature_block[feature_block$MSntreeID == selected_FT, ]
   }
 
@@ -511,12 +533,13 @@ filtered_trees_spectra <- function(db) {
   selected_trees_list <- lapply(feat_block, selection)
   selected_trees_df <- do.call(rbind, selected_trees_list)
 
-  # Subset the original spectra object
-  selected_sps <- db[db$MSntreeID %in% selected_trees_df$MSntreeID]
+ 
+  keep_idx <- match(selected_trees_df$MSntreeID, db$MSntreeID, nomatch = 0)
+  selected_sps <- db[keep_idx]
 
-  cat("Spectra object filtré avec succès!\n")
   return(selected_sps)
 }
+
 
 ftms_one_tree <- filtered_trees_spectra(ftms_msn_tree)
 
@@ -525,7 +548,9 @@ msLevel(ftms_one_tree) |> table()
 ```
 
 after selecting one representative tree per feature we have now: MS2 :
-712, MS3 : 675, MS4 : 321
+
+
+
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
@@ -538,7 +563,7 @@ length(unique(ftms_one_tree$feature_id))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 712 unique feature and unique MSntreeID, That's mean that we
+we have *** unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
