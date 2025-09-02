@@ -169,14 +169,10 @@ select_unique_MS2 <- function(ms2, ftms) {
     #rt of the first group
     ms2_rt <- rtime(ms2)[gidx[1]]
     
-    # Identify sample name based on the path in dataStorage
-    fname <- basename(sp$dataStorage[gidx[1]])
-    sample_col <- sub("R[0-9]+\\.mzML$", "", fname)
     
     # rtmed and intensity of the feature
     rt_features <- featureDefinitions(ftms)[feature_ids, "rtmed"]
-    int_features <- featureDefinitions(ftms)[feature_ids, sample_col]
-    
+
     # Initialisation
     keep_feat <- character(0) #features to keep
     amb_feat <- feature_ids #ambiguous features
@@ -187,7 +183,7 @@ select_unique_MS2 <- function(ms2, ftms) {
       
       # Case A 
       # Verify if a feature was assigned at least once to a unique MS2 so it's
-      #an unambigious feature
+      #an unambiguous feature
       unamb_f <- any(feature_table[i_id, ] == 1)
       if (unamb_f) {
         # If yes we remove it's assignation to this scanIndex and 
@@ -204,13 +200,6 @@ select_unique_MS2 <- function(ms2, ftms) {
         num / denom
       })
       
-      # Calculate the intensity ratio 
-      ratios_int <- sapply(seq_along(feature_ids)[-i], function(j) {
-        denom <- int_features[j]
-        if (is.na(denom) || denom <= 0) return(NA_real_)
-        int_features[i] / denom
-      })
-      ratios_int <- ratios_int[!is.na(ratios_int)]
       
       # Condition RT
       keep_rt <- which(ratios_rt < 1)  # keep features with ratio < 1
@@ -218,16 +207,9 @@ select_unique_MS2 <- function(ms2, ftms) {
         thr <- quantile(ratios_rt[keep_rt], 0.1)  # top 10% of the smallest rt
         if (any(ratios_rt[keep_rt] <= thr)) keep_feat <- c(keep_feat, i_id)
       }
-      
-      #Intensity condition
-      keep_int <- which(ratios_int > 1)  # keep features with int ratio> 1
-      if (length(keep_int) > 0) {
-        thr <- quantile(ratios_int[keep_int], 0.9)  # top 10% of the highest rt
-        if (any(ratios_int[keep_int] >= thr)) keep_feat <- c(keep_feat, i_id)
-      }
     }
     
-    # Upate the features to keep and the ambiguous ones
+    # Update the features to keep the final features and the ambiguous ones
     final_feature[[gidx[1]]] <- unique(keep_feat)
     amb_f[[gidx[1]]] <- setdiff(feature_ids, keep_feat)
   }
@@ -251,7 +233,7 @@ select_unique_MS2 <- function(ms2, ftms) {
 ms2 <- select_unique_MS2(ms2, ftms)
 spectraData(ms2)
 ```
-at least we have 3660 MS2 spectra
+at least we have 3643 MS2 spectra
 
 
 
@@ -275,7 +257,7 @@ ambiguous_spectra <- sp[idx, ]
 ambiguous_spectra
 
 ```
-there is 133 line with alt_feature_id different to NA from 3907
+there is 136 line with alt_feature_id different to NA from 3907
 
 In the below code we explore, for each
 sample (dataOrigin), if it still some MS2 spectra assigned to more than one
@@ -439,7 +421,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees is 3660:
+The total number of MSn trees is 3643:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -499,9 +481,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 1803 The number of trees
+The number of trees that go up to MS2 level is : 1800 The number of trees
 that go up to MS3 level is : 405 The number of trees that go up to MS4
-level is : 1452
+level is : 1438
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
