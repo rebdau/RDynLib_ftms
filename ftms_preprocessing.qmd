@@ -60,7 +60,7 @@ now we import our dataset
 
 ```{r}
 sample_data_ftms <- read_xlsx(
-    file.path(pth, "data/ftms_data_files.xlsx")) |>
+    file.path(pth, "data/sample_data/ftms_data_files.xlsx")) |>
     as.data.frame()
 MZML_PATH <- file.path(pth,"data","mzML")
 ftms <- readMsExperiment(file.path(MZML_PATH, sample_data_ftms$data_file),
