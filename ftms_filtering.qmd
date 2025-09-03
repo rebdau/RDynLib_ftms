@@ -5,8 +5,8 @@ format:
     toc: true
     self-contained: true
 author: "Ahlam Mentag, Johannes Rainer"
-editor: 
-  markdown: 
+editor:
+  markdown:
     wrap: 72
 ---
 
@@ -30,17 +30,16 @@ library(xcms)
 library(MsExperiment)
 library(Spectra)
 library(readxl)
-library(IRanges)   
-library(S4Vectors)  
+library(IRanges)
+library(S4Vectors)
 register(SerialParam())
 pth <- getwd()
 pth
 ```
 
-First we load the `XcmsExperiment` ftms object
+First we load the `XcmsExperiment` ftms object with the preprocessing results.
 
 ```{r}
-
 load(file.path(pth, "data", "ftms_sh_minfr.RData"))
 class(ftms)
 ```
@@ -63,7 +62,6 @@ msLevel(ms2) |>
   table()
 ```
 
-
 ```{r}
 spectraData(ms2)
 ```
@@ -77,7 +75,7 @@ length(unique(ms2$feature_id))
 length(ms2$feature_id)
 ```
 
-Here we print the initial number of MSLevels.
+Here we print the initial number of MS levels.
 
 ```{r}
 s <- spectra(ftms)
@@ -89,6 +87,7 @@ spectra ((20804-4329)\*100/20804) could not be assigned to any
 chromatographic peak.
 
 The percentage of features with at least one MS2:
+
 ```{r}
 # Total number of features in ftms
 n_total_features <- nrow(featureDefinitions(ftms))
@@ -100,10 +99,18 @@ n_features_with_ms2 <- length(ms2)
 perc_features_with_ms2 <- (n_features_with_ms2 / n_total_features) * 100
 perc_features_with_ms2
 
-
-
 ```
+
 The percentage of features with at least one MS2 is 47%
+
+A summary on the number of MS2 spectra assigned to a feature is shown below:
+
+```{r}
+table(ms2$feature_id) |>
+    quantile()
+```
+
+The median number of MS2 spectra per feature (across all data files) is hence 3.
 
 the percentage of MS2 spectra that are assigned to a feature
 
@@ -119,179 +126,195 @@ perc_ms2_assigned <- (n_assigned_ms2 / n_total_ms2) * 100
 perc_ms2_assigned
 
 ```
+
 the percentage of MS2 spectra that are assigned to a feature is 23%
 
-Now, we will keep only one MS2 spectrum for that if more than one MS2 spectrum 
-is linked to the same feature. First, we select the duplicated MS2 spectra by 
-identifying those with the same dataOrigin and acquisitionNum but different
-feature_id to detect duplicates assigned to multiple features. From these 
-duplicated MS2 spectra, we then check first(caseA) if a feature has unique 
-MS2 spectra elsewhere, its assignment in the duplicated group is removed and 
-the others are flagged as ambiguous. Then (case B), if no feature has unique 
-spectra, we keep the feature whose retention time is closest or whose
-chromatographic intensity is strongest (top 10%), and mark the rest 
-as ambiguous.
-Thus, each MS2 spectrum is finally linked to only one feature, while alternative
-links are marked as ambiguous.
+Note that an MS2 spectrum could also be assigned to more than one feature. The
+total number of MS2 spectra assigned to more than one feature is:
+
+```{r}
+ms2_id <- paste0(ms2$dataOrigin, ms2$acquisitionNum)
+ms2_mult <- names(table(ms2_id)[table(ms2_id) > 1])
+length(ms2_mult)
+```
+
+Manually evaluate some of these cases:
+
+```{r}
+a <- ms2[ms2_id == ms2_mult[3L]]
+
+a_chr <- featureChromatograms(ftms, features = a$feature_id)
+par(mfrow = c(1, 2))
+plot(a_chr[1])
+abline(v = a$rtime, col = "red")
+plot(a_chr[2])
+abline(v = a$rtime, col = "red")
+```
+
+The features are thus very close in the retention time dimension, eventually
+even not well separated. The MS2 spectrum (retention time highlighted in red) is
+associated to a chromatographic peak in one sample that was eventually wrongly
+assigned to the earlier feature.
+
+For most other examples, the feature seem to represent noise or at least no
+clear chromatographic signal (see for example below).
+
+```{r}
+a <- ms2[ms2_id == ms2_mult[200L]]
+
+a_chr <- featureChromatograms(ftms, features = a$feature_id)
+par(mfrow = c(1, 2))
+plot(a_chr[1])
+abline(v = a$rtime, col = "red")
+plot(a_chr[2])
+abline(v = a$rtime, col = "red")
+```
+
+**Question**: (maybe for the next meeting with Rebecca) should we maybe consider
+keeping only *high quality* signals?  trying to remove these noisy
+features/chromatographic peaks?
+
+
+## Resolving multiple assignments of MS2 spectra to features
+
+We next evaluate the cases above to reduce/remove the multiple assignments and
+keep only a single MS2-feature association.
+First, we select the duplicated MS2 spectra by
+identifying those with the same *dataOrigin* and *acquisitionNum* but different
+*feature_id* to detect duplicates assigned to multiple features. From these
+duplicated MS2 spectra, we then check first (*case A*) if a feature has unique
+MS2 spectra elsewhere. If that is the case any ambiguous assignment is removed
+and only the unambiguous mappings are kept for the feature. Subsequently, the
+assignments are checked again and if there are still duplicated assignments the
+distance of the MS2 to the respective features is evaluated (*case B*): we keep
+the top 10% MS2-feature assignments. All other assignments are dropped for the
+respective feature.
 
 ```{r}
 select_unique_MS2 <- function(ms2, ftms) {
-  
+
   sp <- spectraData(ms2)
-  
+
   # Create a unique identifier for each unique groupe of (dataOrigin, scanIndex)
   sp$groups <- paste0(sp$dataOrigin, "_", sp$scanIndex)
-  
-  # Create indices for duplicated groups 
+
+  # Create indices for duplicated groups
   group_idx <- split(seq_len(nrow(sp)), sp$groups)
-  
+
+  # define MS2 as ambiguous if they are duplicated in sp (i.e., are assigned
+  # to >= 2 features. We use the unique ID for the MS2 spectra and their
+  # indices in sp for that.
+  sp$is_ambiguous <- FALSE
+  sp$is_ambiguous[sp$groups %in% names(group_idx)[lengths(group_idx) > 1]] <- TRUE
+
   # Initialization
   final_feature <- vector("list", nrow(sp))  # For the chosen features
   amb_f <- vector("list", nrow(sp))          # For ambiguous features
-  
+
   # Table of occurences for each feature in a dataOrigine
-  feature_table <- xtabs(~ feature_id + dataOrigin, data = sp)
-  
+  # jo: I think it's not good to use this table. it can happen (and it's not
+  # a problem) if we have 2 MS2 spectra for the same feature in the same
+  # sample (dataOrigin). The problem is if the same MS2 is assigned to
+  # two different features.
+  # feature_table <- xtabs(~ feature_id + dataOrigin, data = sp)
+
   # Loop on each group
   for (gname in names(group_idx)) {
     # line indices of each group
-    gidx <- group_idx[[gname]]  
+    gidx <- group_idx[[gname]]
     # all features that were assigned to the current group
-    feature_ids <- unique(unlist(sp$feature_id[gidx]))  
-    
+    feature_ids <- unique(unlist(sp$feature_id[gidx]))
+
     # if a scanIndex was assigned to a unique feature, we don't do anything
     if (length(feature_ids) == 1) {
       final_feature[[gidx[1]]] <- feature_ids
       amb_f[[gidx[1]]] <- character(0)
       next  # go to the next group...
     }
-    
+
     #rt of the first group
     ms2_rt <- rtime(ms2)[gidx[1]]
-    
-    
+
+
     # rtmed and intensity of the feature
     rt_features <- featureDefinitions(ftms)[feature_ids, "rtmed"]
 
     # Initialisation
     keep_feat <- character(0) #features to keep
     amb_feat <- feature_ids #ambiguous features
-    
+
     # Loop on each feature in the group
     for (i in seq_along(feature_ids)) {
       i_id <- feature_ids[i]
-      
-      # Case A 
-      # Verify if a feature was assigned at least once to a unique MS2 so it's
-      #an unambiguous feature
-      unamb_f <- any(feature_table[i_id, ] == 1)
-      if (unamb_f) {
-        # If yes we remove it's assignation to this scanIndex and 
-        #we marque other features as ambiguous
+
+      # Case A
+      # Verify if a feature was assigned at least once to a unique MS2 so there
+      # is an(other) unambiguous MS2-feature assignment. We thus skip/drop
+      # the current assignment and move to the next.
+      # unamb_f <- any(feature_table[i_id, ] == 1)
+      if (any(!sp$is_ambiguous[sp$feature_id == i_id])) {
+        # If yes we remove it's assignation to this scanIndex and
         next  # go to the next feature...
       }
-      
+
       # Case B
-      # Calculate the RT ratio 
+      # Calculate the RT ratio
       num <- abs(ms2_rt - rt_features[i])
       ratios_rt <- sapply(seq_along(feature_ids)[-i], function(j) {
         denom <- abs(ms2_rt - rt_features[j])
         if (denom == 0) return(Inf)
         num / denom
       })
-      
-      
+
       # Condition RT
-      keep_rt <- which(ratios_rt < 1)  # keep features with ratio < 1
-      if (length(keep_rt) > 0) {
+      keep_rt <- which(ratios_rt < 1)  # keep assignment to features with ratio < 1
+      if (length(keep_rt)) {
         thr <- quantile(ratios_rt[keep_rt], 0.1)  # top 10% of the smallest rt
         if (any(ratios_rt[keep_rt] <= thr)) keep_feat <- c(keep_feat, i_id)
       }
     }
-    
+
     # Update the features to keep the final features and the ambiguous ones
     final_feature[[gidx[1]]] <- unique(keep_feat)
     amb_f[[gidx[1]]] <- setdiff(feature_ids, keep_feat)
   }
-  
+
   # Create a new spectra object with the updated features_id and ambiguous column
-  ms2_res <- ms2
-  spectraData(ms2_res)$feature_id <- CharacterList(final_feature)
-  spectraData(ms2_res)$ambiguous <- CharacterList(amb_f)
-  
-  # Remove duplicates
-  keep <- sapply(final_feature, length) > 0
-  ms2_res <- ms2_res[keep]
-  
-  return(ms2_res)
+  ms2$is_ambiguous <- sp$is_ambiguous
+  ms2_res <- ms2[lengths(final_feature) > 0]
+  ms2_res$feature_id <- unlist(final_feature, use.names = FALSE)
+  ms2_res$ambiguous <- CharacterList(amb_f[lengths(final_feature) > 0])
+  ms2_res
 }
 
-
-
-
-
 ms2 <- select_unique_MS2(ms2, ftms)
-spectraData(ms2)
 ```
-at least we have 3643 MS2 spectra
 
+Removing duplicated assignment reduced the data set to `r length(ms2)`
+spectra for `r length(unique(ms2$feature_id))` unique features.
 
+### Validation
+
+We next evaluate whether the assignment of single MS2 spectra to multiple
+features has been resolved. First we extract the spectra that have been
+declared as *ambiguous* (i.e., that were initially assigned to more than one
+feature).
 
 ```{r}
-length(unique(unlist(ms2$feature_id)))
-length(ms2$feature_id)
-```
-we have 694 unique feature
-
-
-
-Verification
-```{r}
-sp <- spectraData(ms2)
-
-# Extract indices where ambiguous is not empty
-idx <- which(lengths(sp$ambiguous) > 0)
-
-# Extract those rows
-ambiguous_spectra <- sp[idx, ]
-ambiguous_spectra
-
-```
-there is 136 line with alt_feature_id different to NA from 3907
-
-In the below code we explore, for each
-sample (dataOrigin), if it still some MS2 spectra assigned to more than one
-feature. 
-```{r}
-scanIndex.per.ori <- split(ms2$scanIndex, ms2$dataOrigin)
-lapply(scanIndex.per.ori, function(x) any(duplicated(x)))
-lapply(scanIndex.per.ori, function(x) x[duplicated(x)])
+sp <- spectraData(ms2[ms2$is_ambiguous], c("acquisitionNum", "dataOrigin",
+                                           "feature_id", "ambiguous"))
+as.data.frame(sp)
 ```
 
-No MS2 spectra are indeed assigned to multiple features. We have a
-closer look at sample s1r3:
+Next we evaluate if each MS2 spectrum is now assigned to a single feature (even
+if it might be/was ambiguous).
 
 ```{r}
-ms2.per.ori <- split(ms2, ms2$dataOrigin)
-s1r3 <- ms2.per.ori[[3]]                     
-spdat  <-spectraData(s1r3)
-spdat$scanIndex[duplicated(spdat$scanIndex)]
+sp_id <- paste0(ms2$dataOrigin, ms2$acquisitionNum)
+max(table(sp_id))
 ```
 
-```{r}
-spdat[spdat$scanIndex == 381, ]
-```
-
-In sample s1r3, spectra are not assigned to a unique feature.
-
-```{r}
-spdat[spdat$scanIndex == 1814,]
-spdat[spdat$scanIndex == 1540,]
-spdat[spdat$scanIndex == 381,]
-spdat_si381 <- spdat[spdat$scanIndex == 381,]
-spdat_si381$rtime - spdat_si381$feature_rtmed
-```
-
+Each MS2 spectrum is thus assigned to a single feature.
 
 
 # Extract all MS2-MSn spectra associated to features
@@ -494,26 +517,26 @@ precursor intensity
 unique_tree_feature <- function(db) {
   # Store MS2 indices
   ms2_idx <- which(msLevel(db) == 2)
-  
+
   # Table of linked MS2 features only
   feat_ms2 <- data.frame(
     idx = ms2_idx,
-    feature_id = sapply(db$feature_id[ms2_idx], function(x) x[1]),  
+    feature_id = sapply(db$feature_id[ms2_idx], function(x) x[1]),
     MSntreeID = db$MSntreeID[ms2_idx],
     precursorIntensity = db$precursorIntensity[ms2_idx]
   )
-  
+
   # for each feature choose the longest tree and the one with the highest
   #precursorIntensity()  in case of tie
   selected_tree_ids <- tapply(seq_len(nrow(feat_ms2)), feat_ms2$feature_id, function(i) {
-    #the longest tree 
+    #the longest tree
     tbl <- table(feat_ms2$MSntreeID[i])
     FTmax <- as.numeric(names(tbl)[tbl == max(tbl)])
     #the highest precursorIntensity()
     sub_idx <- i[feat_ms2$MSntreeID[i] %in% FTmax]
     sub_idx[which.max(feat_ms2$precursorIntensity[sub_idx])]
   })
-  
+
   tree_ids_keep <- feat_ms2$MSntreeID[unlist(selected_tree_ids)]
   db[which(db$MSntreeID %in% tree_ids_keep)]
 }
@@ -523,7 +546,7 @@ ftms_one_tree <- unique_tree_feature(ftms_msn_tree)
 msLevel(ftms_one_tree) |> table()
 ```
 
-after selecting one representative tree per feature we have now: 
+after selecting one representative tree per feature we have now:
 MS2 : 694 and MS3 : 614 and MS4 : 292
 
 
