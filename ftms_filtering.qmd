@@ -117,9 +117,12 @@ the percentage of MS2 spectra that are assigned to a feature
 ```{r}
 # Total number of MS2 spectra in the dataset
 n_total_ms2 <- sum(msLevel(s) == 2)
-
+sp <- spectraData(ms2)
+sp$groups <- paste0(sp$dataOrigin, "_", sp$scanIndex)
 # Number of MS2 spectra assigned to features
-n_assigned_ms2 <- sum(lengths(ms2))
+n_assigned_ms2 <- length(unique(sp$groups))
+
+
 
 # Percentage assigned
 perc_ms2_assigned <- (n_assigned_ms2 / n_total_ms2) * 100
@@ -127,7 +130,7 @@ perc_ms2_assigned
 
 ```
 
-the percentage of MS2 spectra that are assigned to a feature is 23%
+the percentage of MS2 spectra that are assigned to a feature is 18%
 
 Note that an MS2 spectrum could also be assigned to more than one feature. The
 total number of MS2 spectra assigned to more than one feature is:
@@ -504,9 +507,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 1800 The number of trees
-that go up to MS3 level is : 405 The number of trees that go up to MS4
-level is : 1438
+The number of trees that go up to MS2 level is : 1808 The number of trees
+that go up to MS3 level is : 404 The number of trees that go up to MS4
+level is : 1339
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -547,7 +550,7 @@ msLevel(ftms_one_tree) |> table()
 ```
 
 after selecting one representative tree per feature we have now:
-MS2 : 694 and MS3 : 614 and MS4 : 292
+MS2 : 715 and MS3 : 615 and MS4 : 292
 
 
 Finally we verify if the number of unique features corresponds to the
@@ -561,7 +564,7 @@ length(unique(unlist(ftms_one_tree$feature_id)))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 694 unique feature and unique MSntreeID, That's mean that we
+we have 715 unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
