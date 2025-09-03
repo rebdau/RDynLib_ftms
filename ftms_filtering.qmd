@@ -93,7 +93,7 @@ The percentage of features with at least one MS2:
 n_total_features <- nrow(featureDefinitions(ftms))
 
 # Features with ≥1 MS2 (those returned by featureSpectra)
-n_features_with_ms2 <- length(ms2)
+n_features_with_ms2 <- length(unique(ms2$feature_id))
 
 # Percentage
 perc_features_with_ms2 <- (n_features_with_ms2 / n_total_features) * 100
@@ -101,7 +101,7 @@ perc_features_with_ms2
 
 ```
 
-The percentage of features with at least one MS2 is 47%
+The percentage of features with at least one MS2 is 8%
 
 A summary on the number of MS2 spectra assigned to a feature is shown below:
 
