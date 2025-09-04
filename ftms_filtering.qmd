@@ -83,7 +83,7 @@ table(msLevel(s))
 ```
 
 In total, there were 20804 MS2 spectra. This means that 79% of the MS2
-spectra ((20804-4329)\*100/20804) could not be assigned to any
+spectra ((20804-4409)\*100/20804) could not be assigned to any
 chromatographic peak.
 
 The percentage of features with at least one MS2:
@@ -130,7 +130,7 @@ perc_ms2_assigned
 
 ```
 
-the percentage of MS2 spectra that are assigned to a feature is 18%
+the percentage of MS2 spectra that are assigned to a feature is 19%
 
 Note that an MS2 spectrum could also be assigned to more than one feature. The
 total number of MS2 spectra assigned to more than one feature is:
@@ -139,12 +139,18 @@ total number of MS2 spectra assigned to more than one feature is:
 ms2_id <- paste0(ms2$dataOrigin, ms2$acquisitionNum)
 ms2_mult <- names(table(ms2_id)[table(ms2_id) > 1])
 length(ms2_mult)
+table(table(ms2_id))
+ms2_three <- names(table(ms2_id)[table(ms2_id) == 3])
+
 ```
+
+Most MS2 spectra that are assigned to more than one feature, are assigned to two features (420 MS2 spectra). MS2 spectra are maximally assigned to 3 features (38 MS2 spectra)
 
 Manually evaluate some of these cases:
 
 ```{r}
 a <- ms2[ms2_id == ms2_mult[3L]]
+print(spa <- spectraData(a))
 
 a_chr <- featureChromatograms(ftms, features = a$feature_id)
 par(mfrow = c(1, 2))
@@ -152,18 +158,24 @@ plot(a_chr[1])
 abline(v = a$rtime, col = "red")
 plot(a_chr[2])
 abline(v = a$rtime, col = "red")
+
+ms2_rt <- a$rtime
+abs(ms2_rt - spa$feature_rtmed)
+abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
 ```
 
-The features are thus very close in the retention time dimension, eventually
+The two features to which MS2 spectrum "a" was assigned have exactly the same feature_mzmed = 285.181. The features are also very close in the retention time dimension, eventually
 even not well separated. The MS2 spectrum (retention time highlighted in red) is
 associated to a chromatographic peak in one sample that was eventually wrongly
 assigned to the earlier feature.
+In this case, the MS2 assignment to feature FT2029 should be removed. This can be done based on the relative retention time differences with respect to the two features.  
 
 For most other examples, the feature seem to represent noise or at least no
 clear chromatographic signal (see for example below).
 
 ```{r}
 a <- ms2[ms2_id == ms2_mult[200L]]
+print(spa <- spectraData(a))
 
 a_chr <- featureChromatograms(ftms, features = a$feature_id)
 par(mfrow = c(1, 2))
@@ -171,12 +183,58 @@ plot(a_chr[1])
 abline(v = a$rtime, col = "red")
 plot(a_chr[2])
 abline(v = a$rtime, col = "red")
+ms2_rt <- a$rtime
+abs(ms2_rt - spa$feature_rtmed)
+abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
 ```
+
+Here we have a look at MS2 that were assigned to three different features:
+```{r}
+a <- ms2[ms2_id == ms2_three[1L]]
+print(spa <- spectraData(a))
+
+a_chr <- featureChromatograms(ftms, features = a$feature_id)
+par(mfrow = c(1, 3))
+plot(a_chr[1])
+abline(v = a$rtime, col = "red")
+plot(a_chr[2])
+abline(v = a$rtime, col = "red")
+plot(a_chr[3])
+abline(v = a$rtime, col = "red")
+ms2_rt <- a$rtime
+
+abs(ms2_rt - spa$feature_rtmed)
+abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
+abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[3] - spa$feature_rtmed[3])
+```
+Also here, all three features have exactly the same mzmed. The first feature (FT0170) has the retention time closest to the MS2 RT, and has also the best peak shape. the two other features don't have a proper peak shape and look mainly like noise.
+
+```{r}
+a <- ms2[ms2_id == ms2_three[2L]]
+print(spa <- spectraData(a))
+
+a_chr <- featureChromatograms(ftms, features = a$feature_id)
+par(mfrow = c(1, 3))
+plot(a_chr[1])
+abline(v = a$rtime, col = "red")
+plot(a_chr[2])
+abline(v = a$rtime, col = "red")
+plot(a_chr[3])
+abline(v = a$rtime, col = "red")
+ms2_rt <- a$rtime
+
+abs(ms2_rt - spa$feature_rtmed)
+abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
+abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[3] - spa$feature_rtmed[3])
+```
+Also here, all three features have exactly the same mzmed. The first feature (FT2021) has the retention time closest to the MS2 RT, and clearly has also the best peak shape. The two other features don't have a proper peak shape, they look like multiple unseparated peaks.
 
 **Question**: (maybe for the next meeting with Rebecca) should we maybe consider
 keeping only *high quality* signals?  trying to remove these noisy
-features/chromatographic peaks?
+features/chromatographic peaks? 
+==> we could try gradually increasing the sn ratio again
 
+**TODO**: We should also have a look specifically at the MS2 spectra that have been assigned to features with different mzmed.
 
 ## Resolving multiple assignments of MS2 spectra to features
 
