@@ -3,8 +3,8 @@ title: "Semi-automated library generation; FTMS LC-MSn data"
 format: html
 editor_options:
   chunk_output_type: inline
-editor: 
-  markdown: 
+editor:
+  markdown:
     wrap: 72
 ---
 
@@ -303,15 +303,16 @@ Eventually we could try another m/z range...
 ## Peak detection on full dataset
 
 We next perform the chromatographic peak detection, using the centWave
-algorithm, on the full `MsExperiment`object, containing data of ten MzML
-files. With integrate = 2 we use an alternative algorithm to correctly
+algorithm, on the full `MsExperiment`object, containing data of ten mzML
+files. With `integrate = 2` we use an alternative algorithm to correctly
 identify the boundaries of the identified chromatographic peaks.
-Parameter chunkSize is used to control the number of files from which
+Parameter `chunkSize` is used to control the number of files from which
 the data should be loaded into memory at a time.
 
 ```{r}
 ftms <- findChromPeaks(
-    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2, snthresh = 2),
+    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2, snthresh = 2,
+                        ppm = 50, prefilter = c(3, 500), mzdiff = 0.001),
     chunkSize = 2)
 ```
 
@@ -342,11 +343,12 @@ quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
 
 We next perform the **chromatographic peak refinement** to reduce the
 number of potential centWave-specific peak detection artifacts. We
-choose settings that depend on the observed peak widths above (i.e. half
+choose settings that depend on the observed peak widths above (i.e., about half
 of the observed median widths).
 
 ```{r}
-mnpp <- MergeNeighboringPeaksParam(expandRt = 9.67525, expandMz = 0.0006)
+mnpp <- MergeNeighboringPeaksParam(expandRt = 10, expandMz = 0.001,
+                                   minProp = 0.66)
 ftms <- refineChromPeaks(ftms, mnpp)
 ```
 
@@ -355,6 +357,7 @@ refinement.
 
 ```{r}
 pks <- chromPeaks(ftms)
+nrow(pks)
 table(pks[, "sample"])
 quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
 quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
@@ -374,10 +377,9 @@ example m/z range from above.
 a_2 <- chromatogram(ftms, aggregationFun = "max", mz = mzr)
 
 #' Configure settings
-
 pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
-                        bw = 6, minFraction = 0.3)
-
+                        bw = 6, minFraction = 0.3, binSize = 0.1,
+                        ppm = 10)
 #' Evaluate settings on the full range
 plotChromPeakDensity(
     a_2, param = pdp, col = paste0(col_sample_ftms, 80),
@@ -544,7 +546,8 @@ signal.
 ```{r}
 #' Configure settings
 pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
-                        bw = 2, minFraction = 0.3)
+                        bw = 2, minFraction = 0.3, binSize = 0.1,
+                        ppm = 10)
 
 #' Evaluate settings on the full range
 plotChromPeakDensity(a_adj, param = pdp, col = col_sample_ftms)
