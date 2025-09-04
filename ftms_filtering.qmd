@@ -40,7 +40,7 @@ pth
 First we load the `XcmsExperiment` ftms object with the preprocessing results.
 
 ```{r}
-load(file.path(pth, "data", "ftms_sh_minfr.RData"))
+load(file.path(pth, "data", "ftms_new_settings.RData"))
 class(ftms)
 ```
 
@@ -67,7 +67,7 @@ spectraData(ms2)
 ```
 
 
-it returns 4329 MS level 2 spectra. The total number of features for
+it returns 4409 MS level 2 spectra. The total number of features for
 which an MS2 spectrum was identified is:
 
 ```{r}
@@ -101,7 +101,7 @@ perc_features_with_ms2
 
 ```
 
-The percentage of features with at least one MS2 is 8%
+The percentage of features with at least one MS2 is 8.19%
 
 A summary on the number of MS2 spectra assigned to a feature is shown below:
 
@@ -447,7 +447,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees is 3643:
+The total number of MSn trees is 3508:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -570,7 +570,7 @@ have for each feature one representative tree.
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "unique_tree_ftms.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "unique_tree_ftms_ns.RData"))
 ```
 
 # Session information
