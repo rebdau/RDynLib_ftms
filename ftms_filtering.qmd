@@ -37,7 +37,8 @@ pth <- getwd()
 pth
 ```
 
-First we load the `XcmsExperiment` ftms object with the preprocessing results.
+First we load the `XcmsExperiment` ftms object with the preprocessing
+results.
 
 ```{r}
 load(file.path(pth, "data", "ftms_new_settings.RData"))
@@ -65,7 +66,6 @@ msLevel(ms2) |>
 ```{r}
 spectraData(ms2)
 ```
-
 
 it returns 4409 MS level 2 spectra. The total number of features for
 which an MS2 spectrum was identified is:
@@ -103,14 +103,16 @@ perc_features_with_ms2
 
 The percentage of features with at least one MS2 is 8.19%
 
-A summary on the number of MS2 spectra assigned to a feature is shown below:
+A summary on the number of MS2 spectra assigned to a feature is shown
+below:
 
 ```{r}
 table(ms2$feature_id) |>
     quantile()
 ```
 
-The median number of MS2 spectra per feature (across all data files) is hence 3.
+The median number of MS2 spectra per feature (across all data files) is
+hence 3.
 
 the percentage of MS2 spectra that are assigned to a feature
 
@@ -132,19 +134,24 @@ perc_ms2_assigned
 
 the percentage of MS2 spectra that are assigned to a feature is 19%
 
-Note that an MS2 spectrum could also be assigned to more than one feature. The
-total number of MS2 spectra assigned to more than one feature is:
+Note that an MS2 spectrum could also be assigned to more than one
+feature. The total number of MS2 spectra assigned to more than one
+feature is:
 
 ```{r}
 ms2_id <- paste0(ms2$dataOrigin, ms2$acquisitionNum)
 ms2_mult <- names(table(ms2_id)[table(ms2_id) > 1])
 length(ms2_mult)
 table(table(ms2_id))
+minimumone <- sum(table(table(ms2_id)))
 ms2_three <- names(table(ms2_id)[table(ms2_id) == 3])
+cat("Of the MS2 spectra that were assigned to at least one feature ",length(ms2_mult)*100/minimumone,"% was assigned to multiple features.\n")
 
 ```
 
-Most MS2 spectra that are assigned to more than one feature, are assigned to two features (420 MS2 spectra). MS2 spectra are maximally assigned to 3 features (38 MS2 spectra)
+Most MS2 spectra that are assigned to more than one feature, are
+assigned to two features (420 MS2 spectra). MS2 spectra are maximally
+assigned to 3 features (38 MS2 spectra).
 
 Manually evaluate some of these cases:
 
@@ -164,14 +171,17 @@ abs(ms2_rt - spa$feature_rtmed)
 abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
 ```
 
-The two features to which MS2 spectrum "a" was assigned have exactly the same feature_mzmed = 285.181. The features are also very close in the retention time dimension, eventually
-even not well separated. The MS2 spectrum (retention time highlighted in red) is
-associated to a chromatographic peak in one sample that was eventually wrongly
-assigned to the earlier feature.
-In this case, the MS2 assignment to feature FT2029 should be removed. This can be done based on the relative retention time differences with respect to the two features.  
+The two features to which MS2 spectrum "a" was assigned have exactly the
+same feature_mzmed = 285.181. The features are also very close in the
+retention time dimension, eventually even not well separated. The MS2
+spectrum (retention time highlighted in red) is associated to a
+chromatographic peak in one sample that was eventually wrongly assigned
+to the earlier feature. In this case, the MS2 assignment to feature
+FT2029 should be removed. This can be done based on the relative
+retention time differences with respect to the two features.
 
-For most other examples, the feature seem to represent noise or at least no
-clear chromatographic signal (see for example below).
+For most other examples, the feature seem to represent noise or at least
+no clear chromatographic signal (see for example below).
 
 ```{r}
 a <- ms2[ms2_id == ms2_mult[200L]]
@@ -188,7 +198,9 @@ abs(ms2_rt - spa$feature_rtmed)
 abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
 ```
 
-Here we have a look at MS2 that were assigned to three different features:
+Here we have a look at MS2 that were assigned to three different
+features:
+
 ```{r}
 a <- ms2[ms2_id == ms2_three[1L]]
 print(spa <- spectraData(a))
@@ -207,7 +219,11 @@ abs(ms2_rt - spa$feature_rtmed)
 abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
 abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[3] - spa$feature_rtmed[3])
 ```
-Also here, all three features have exactly the same mzmed. The first feature (FT0170) has the retention time closest to the MS2 RT, and has also the best peak shape. the two other features don't have a proper peak shape and look mainly like noise.
+
+Also here, all three features have exactly the same mzmed. The first
+feature (FT0170) has the retention time closest to the MS2 RT, and has
+also the best peak shape. the two other features don't have a proper
+peak shape and look mainly like noise.
 
 ```{r}
 a <- ms2[ms2_id == ms2_three[2L]]
@@ -227,15 +243,18 @@ abs(ms2_rt - spa$feature_rtmed)
 abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[2] - spa$feature_rtmed[2])
 abs(ms2_rt[1] - spa$feature_rtmed[1])/abs(ms2_rt[3] - spa$feature_rtmed[3])
 ```
-Also here, all three features have exactly the same mzmed. The first feature (FT2021) has the retention time closest to the MS2 RT, and clearly has also the best peak shape. The two other features don't have a proper peak shape, they look like multiple unseparated peaks.
 
-**Question**: (maybe for the next meeting with Rebecca) should we maybe consider
-keeping only *high quality* signals?  trying to remove these noisy
-features/chromatographic peaks? 
-==> we could try gradually increasing the sn ratio again
+Also here, all three features have exactly the same mzmed. The first
+feature (FT2021) has the retention time closest to the MS2 RT, and
+clearly has also the best peak shape. The two other features don't have
+a proper peak shape, they look like multiple unseparated peaks.
 
-**TODO**: We should also have a look specifically at the MS2 spectra that have been assigned to features with different mzmed.
+**Question**: (maybe for the next meeting with Rebecca) should we maybe
+consider keeping only *high quality* signals? trying to remove these
+noisy features/chromatographic peaks? ==\> we could try gradually
+increasing the sn ratio again
 
+# Explore, for all MS2 spectra that were assigned to multiple features, the feature_rtmed and feature_mzmed of these features.
 
 ```{r}
 for (id in ms2_mult) {
@@ -285,21 +304,147 @@ abline(v = 886.761, col = "red", lty = 2)
 
 
 
+# Explore MS2 spectra that have been assigned to features with different mzmed
+We have a look specifically at the MS2 spectra that have been
+assigned to features with different mzmed. Can one of these assigned
+features be unambiguously assigned to the MS2 based on the difference
+between precursorMz and feature_mzmed? Is a single feature_mzmed much
+closer to the precursorMz of the MS2?
 
-## Resolving multiple assignments of MS2 spectra to features
 
-We next evaluate the cases above to reduce/remove the multiple assignments and
-keep only a single MS2-feature association.
-First, we select the duplicated MS2 spectra by
-identifying those with the same *dataOrigin* and *acquisitionNum* but different
-*feature_id* to detect duplicates assigned to multiple features. From these
-duplicated MS2 spectra, we then check first (*case A*) if a feature has unique
-MS2 spectra elsewhere. If that is the case any ambiguous assignment is removed
-and only the unambiguous mappings are kept for the feature. Subsequently, the
-assignments are checked again and if there are still duplicated assignments the
-distance of the MS2 to the respective features is evaluated (*case B*): we keep
-the top 10% MS2-feature assignments. All other assignments are dropped for the
-respective feature.
+First, for MS2 spectra that were assigned to multiple features, we
+analyze the range distribution of feature_mzmed values of these multiple
+features.
+
+```{r}
+#Create Spectra object a, with MS2 spectra that are assigned to multiple features and extract spectraData
+a <- ms2[ms2_id %in% ms2_mult]
+spa <- spectraData(a)
+spa$ms2_id <- factor(paste0(spa$dataOrigin, spa$acquisitionNum))
+ambiguous_assignments <- length(unique(spa$ms2_id))
+cat(c("In total", ambiguous_assignments,"MS2 spectra are assigned to multiple features."))
+
+#Explore range of feature_mzmed values for different features to which each MS2 is assigned
+# Split feature_mzmed values by ms2_id
+split_list <- split(spa$feature_mzmed, spa$ms2_id)
+
+# Check for each ms2_id whether all values are identical
+mzmed_nonidentical_logical <- lapply(split_list, function(x) length(unique(x)) > 1)
+mzmed_nonidentical_total <- sum(unlist(mzmed_nonidentical_logical))
+cat(c("Of all ambiguously assigned MS2 spectra,", mzmed_nonidentical_total*100/ambiguous_assignments,"% are assigned to features with NON-identical mzmed."))
+
+#closer look at ranges of mzmed values for different features assigned to same MS2
+# Function to compute range difference
+diff_fun <- function(x) {
+  max(x, na.rm = TRUE) - min(x, na.rm = TRUE)
+}
+
+# apply to all ms2_id levels
+mzmed_diff <- sapply(split_list, diff_fun)
+
+# Overview of distribution
+summary(mzmed_diff)
+opar <- par(mfrow = c(2, 1))
+hist(mzmed_diff, breaks = 100, main = "Distribution of feature_mzmed range per ms2_id")
+hist(mzmed_diff, xlim = c(0,0.01), breaks = 1000, main = "Distribution of feature_mzmed range per ms2_id")
+par(opar)
+
+```
+
+The mzmed values of different features to which an MS2 was assigned was
+**never exactly identical**, but the majority of features assigned to
+the same MS2 has mzmed values falling in a **range \< 0.002**. We can
+consider that **differences \> 0.002 are significant**.
+
+Now we can identify the MS2 spectra that are assigned to features with
+**significantly different feature_mzmed** values:
+
+```{r}
+# Identify ms2_id with feature_mzmed range > 0.002
+significant_ms2 <- mzmed_diff[mzmed_diff > 0.002]
+length(significant_ms2)
+cat("Of all", length(ms2_mult), "MS2 spectra that were assigned to multiple features, ", length(significant_ms2)*100/length(ms2_mult), "% was assigned to features that differ significantly in mzmed.\n")
+
+# Extract the corresponding ms2_id values
+ms2_id_significant <- names(significant_ms2)
+
+```
+
+Now we explore the differences precursorMz−feature_mzmed observed for
+those MS2 spectra that are assigned to features with **NO significantly
+different feature_mzmed** values.
+
+```{r}
+# Define groups based on mzmed_diff
+ms2_id_non_significant <- names(mzmed_diff[mzmed_diff <= 0.002])
+ms2_id_significant <- names(mzmed_diff[mzmed_diff > 0.002])
+
+# Compute precursorMz - feature_mzmed for all spectra
+spa$delta <- spa$precursorMz - spa$feature_mzmed
+
+# Extract deltas for the two groups
+delta_non_significant <- spa$delta[spa$ms2_id %in% ms2_id_non_significant]
+delta_significant     <- spa$delta[spa$ms2_id %in% ms2_id_significant]
+
+# Explore distribution of deltas in non-significant group
+summary(abs(delta_non_significant))
+
+hist(delta_non_significant, breaks = 100, main = "Delta distribution (non-significant)")
+```
+
+Based on the distribution observed among spectra that were assigned to
+features with the same mzmed (the "non-significant" group), we define a
+threshold for "close to zero" difference precursorMz−feature_mzmed. For
+example, we take a quantile of the absolute differences.
+
+```{r}
+abs_delta_non_significant <- abs(delta_non_significant)
+threshold <- quantile(abs_delta_non_significant, 0.98, na.rm = TRUE)
+
+threshold
+cat("For MS2 spectra that are assigned to multiple features with the same featuremzmed, the difference between precursorMz and feature_mzmed is in 98% of the cases below", round(threshold, 3), ".", "A difference between precursorMz and feature_mzmed <", round(threshold, 3),"is the cutoff for close-to-zero.\n")
+threshold <- round(threshold,3)
+
+# Count per ms2_id_significant how many deltas are within threshold
+#reduce dataset to ms2_id_significant
+spar <- spa[spa$ms2_id %in% ms2_id_significant,]
+spar$ms2_id <- factor(spar$ms2_id)
+split_deltas <- split(abs(spar$delta), 
+                      spar$ms2_id)
+close_counts <- sapply(split_deltas, function(x) sum(x <= threshold, na.rm = TRUE))
+
+cat("How many ms2_id, assigned to features with different RT (rtmed), have 0, 1, 2, ... close-to-zero deltas between precursor-RT and feature-RT:\n")
+table(close_counts)
+cat("For",table(close_counts)[2]*100/length(ms2_id_significant), "% of the MS2 spectra that were assigned to features with different mzmed, one feature can be unambiguously assigned based on the deltas between precursorMz and feature_mzmed?\n" )
+
+```
+
+In **conclusion**, Of the MS2 spectra that were assigned to at least one
+feature, 12 % was assigned to multiple features. Of all MS2 spectra that
+were assigned to multiple features, only (again) 12 % was assigned to
+features that differ significantly in mzmed. Of these, 70 % could be
+assigned unambiguously to a single feature based on the difference
+precursorMz - feature_rtmed \< 0.002. 
+
+==\> 70% of 12% is **8.4% of the
+ambiguously assigned MS2 spectra** that **can be resolved based on
+precursorMz - feature_rtmed** (\< 0.002).
+
+# Resolving multiple assignments of MS2 spectra to features
+
+We next evaluate the cases above to reduce/remove the multiple
+assignments and keep only a single MS2-feature association. First, we
+select the duplicated MS2 spectra by identifying those with the same
+*dataOrigin* and *acquisitionNum* but different *feature_id* to detect
+duplicates assigned to multiple features. From these duplicated MS2
+spectra, we then check first (*case A*) if a feature has unique MS2
+spectra elsewhere. If that is the case any ambiguous assignment is
+removed and only the unambiguous mappings are kept for the feature.
+Subsequently, the assignments are checked again and if there are still
+duplicated assignments the distance of the MS2 to the respective
+features is evaluated (*case B*): we keep the top 10% MS2-feature
+assignments. All other assignments are dropped for the respective
+feature.
 
 ```{r}
 select_unique_MS2 <- function(ms2, ftms) {
@@ -406,10 +551,10 @@ spectra for `r length(unique(ms2$feature_id))` unique features.
 
 ### Validation
 
-We next evaluate whether the assignment of single MS2 spectra to multiple
-features has been resolved. First we extract the spectra that have been
-declared as *ambiguous* (i.e., that were initially assigned to more than one
-feature).
+We next evaluate whether the assignment of single MS2 spectra to
+multiple features has been resolved. First we extract the spectra that
+have been declared as *ambiguous* (i.e., that were initially assigned to
+more than one feature).
 
 ```{r}
 sp <- spectraData(ms2[ms2$is_ambiguous], c("acquisitionNum", "dataOrigin",
@@ -417,8 +562,8 @@ sp <- spectraData(ms2[ms2$is_ambiguous], c("acquisitionNum", "dataOrigin",
 as.data.frame(sp)
 ```
 
-Next we evaluate if each MS2 spectrum is now assigned to a single feature (even
-if it might be/was ambiguous).
+Next we evaluate if each MS2 spectrum is now assigned to a single
+feature (even if it might be/was ambiguous).
 
 ```{r}
 sp_id <- paste0(ms2$dataOrigin, ms2$acquisitionNum)
@@ -426,7 +571,6 @@ max(table(sp_id))
 ```
 
 Each MS2 spectrum is thus assigned to a single feature.
-
 
 # Extract all MS2-MSn spectra associated to features
 
@@ -472,15 +616,11 @@ ftms_msn_tree <- ftms_all_levels(ftms,ms2)
 table(msLevel(ftms_msn_tree))
 ```
 
-
-
-
 The number of spectra from different MS levels is shown below:
 
 ```{r}
 table(msLevel(ftms_msn_tree))
 ```
-
 
 # Grouping MSn spectra into fragmentation trees
 
@@ -570,8 +710,8 @@ ftms_msn_tree$MSntreeID |>
     quantile()
 ```
 
-There is apparently (at least) one tree with 4 spectra.
-Extracting this particular MSn tree.
+There is apparently (at least) one tree with 4 spectra. Extracting this
+particular MSn tree.
 
 ```{r}
 max_index <- ftms_msn_tree$MSntreeID |>
@@ -592,12 +732,9 @@ max_tree$MSntreeID
 
 The MSntree with maximum number of spectra corresponds to the tree,
 within dataOrigin S1R1, depending on MS2 with ScanIndex 2182 which was
-assigned to one FeatureID: FT2705 Within dataOrigin S1R1,
-scanIndex 2183 (MS3), 2184 (MS3), and 2185 (MS4) are assigned to a single
-feature: FT2705.
-
-
-
+assigned to one FeatureID: FT2705 Within dataOrigin S1R1, scanIndex 2183
+(MS3), 2184 (MS3), and 2185 (MS4) are assigned to a single feature:
+FT2705.
 
 ```{r}
 ## we stored the tree ids and the msLevels to a dataframe
@@ -615,9 +752,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 1808 The number of trees
-that go up to MS3 level is : 404 The number of trees that go up to MS4
-level is : 1339
+The number of trees that go up to MS2 level is : 1808 The number of
+trees that go up to MS3 level is : 404 The number of trees that go up to
+MS4 level is : 1339
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -657,9 +794,8 @@ ftms_one_tree <- unique_tree_feature(ftms_msn_tree)
 msLevel(ftms_one_tree) |> table()
 ```
 
-after selecting one representative tree per feature we have now:
-MS2 : 715 and MS3 : 615 and MS4 : 292
-
+after selecting one representative tree per feature we have now: MS2 :
+715 and MS3 : 615 and MS4 : 292
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
