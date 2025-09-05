@@ -236,6 +236,56 @@ features/chromatographic peaks?
 
 **TODO**: We should also have a look specifically at the MS2 spectra that have been assigned to features with different mzmed.
 
+
+```{r}
+for (id in ms2_mult) {
+  a <- ms2[ms2_id == id]
+  spa <- spectraData(a)
+  
+  mzmeds <- spa$feature_mzmed
+  uniq_mzmeds <- unique(mzmeds)
+  
+  cat("Checking id:", id, "\n")
+  cat("All mzmeds:", paste(round(mzmeds, 5), collapse = ", "), "\n")
+  cat("Unique mzmeds:", paste(round(uniq_mzmeds, 5), collapse = ", "), "\n")
+  
+  print(spa[, c("feature_id", "feature_rtmed", "feature_mzmed")])
+  
+}
+
+```
+
+
+
+```{r}
+# Example 1 : FT0413 et FT0416
+ids1 <- c("FT0413", "FT0416")
+a_chr1 <- featureChromatograms(ftms, features = ids1)
+
+plot(a_chr1[1])
+abline(v = 221.347, col = "red", lty = 2)   # RT de l'MS2
+
+plot(a_chr1[2])
+abline(v = 576.601, col = "red", lty = 2)
+
+```
+
+```{r}
+# Example 2 : FT2594 et FT2595
+ids2 <- c("FT2594", "FT2595")
+a_chr2 <- featureChromatograms(ftms, features = ids2)
+
+plot(a_chr2[1])
+abline(v = 895.801, col = "red", lty = 2)
+
+plot(a_chr2[2])
+abline(v = 886.761, col = "red", lty = 2)
+
+```
+
+
+
+
 ## Resolving multiple assignments of MS2 spectra to features
 
 We next evaluate the cases above to reduce/remove the multiple assignments and
