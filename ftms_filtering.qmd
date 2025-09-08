@@ -41,7 +41,7 @@ First we load the `XcmsExperiment` ftms object with the preprocessing
 results.
 
 ```{r}
-load(file.path(pth, "data", "ftms_sh4_minfr.RData"))
+load(file.path(pth, "data", "ftms_fin6.RData"))
 class(ftms)
 ```
 
@@ -67,7 +67,7 @@ msLevel(ms2) |>
 spectraData(ms2)
 ```
 
-it returns 3882 MS level 2 spectra. The total number of features for
+it returns 3551 MS level 2 spectra. The total number of features for
 which an MS2 spectrum was identified is:
 
 ```{r}
@@ -82,8 +82,8 @@ s <- spectra(ftms)
 table(msLevel(s))
 ```
 
-In total, there were 20804 MS2 spectra. This means that 81% of the MS2
-spectra ((20804-3882)\*100/20804) could not be assigned to any
+In total, there were 20904 MS2 spectra. This means that 83% of the MS2
+spectra ((20904-3551)\*100/20904) could not be assigned to any
 chromatographic peak.
 
 The percentage of features with at least one MS2:
@@ -101,7 +101,7 @@ perc_features_with_ms2
 
 ```
 
-The percentage of features with at least one MS2 is 8.46%
+The percentage of features with at least one MS2 is 8.32%
 
 A summary on the number of MS2 spectra assigned to a feature is shown
 below:
@@ -112,7 +112,7 @@ table(ms2$feature_id) |>
 ```
 
 The median number of MS2 spectra per feature (across all data files) is
-hence 4.
+hence 3.
 
 the percentage of MS2 spectra that are assigned to a feature
 
@@ -132,7 +132,7 @@ perc_ms2_assigned
 
 ```
 
-the percentage of MS2 spectra that are assigned to a feature is 17%
+the percentage of MS2 spectra that are assigned to a feature is 15.52%
 
 Note that an MS2 spectrum could also be assigned to more than one
 feature. The total number of MS2 spectra assigned to more than one
@@ -145,13 +145,13 @@ length(ms2_mult)
 table(table(ms2_id))
 minimumone <- sum(table(table(ms2_id)))
 ms2_three <- names(table(ms2_id)[table(ms2_id) == 3])
-cat("Of the MS2 spectra that were assigned to at least one feature, ",length(ms2_mult)*100/minimumone,"% was assigned to multiple features.\n")
+cat("Of the MS2 spectra that were assigned to at least one feature ",length(ms2_mult)*100/minimumone,"% was assigned to multiple features.\n")
 
 ```
 
 Most MS2 spectra that are assigned to more than one feature, are
-assigned to two features (314 MS2 spectra). MS2 spectra are maximally
-assigned to 3 features (27 MS2 spectra).
+assigned to two features (274 MS2 spectra). MS2 spectra are maximally
+assigned to 3 features (22 MS2 spectra).
 
 Manually evaluate some of these cases:
 
@@ -278,11 +278,11 @@ for (id in ms2_mult) {
 
 ```{r}
 # Example 1 : FT0413 et FT0416
-ids1 <- c("FT4356", "FT4357")
+ids1 <- c("FT3944", "FT3944")
 a_chr1 <- featureChromatograms(ftms, features = ids1)
 
 plot(a_chr1[1])
-abline(v = 462.84, col = "red", lty = 2)  
+abline(v = 462.78, col = "red", lty = 2)  
 
 plot(a_chr1[2])
 abline(v = 470.61, col = "red", lty = 2)
@@ -291,14 +291,14 @@ abline(v = 470.61, col = "red", lty = 2)
 
 ```{r}
 # Example 2 : FT2594 et FT2595
-ids2 <- c("FT1526", "FT1529")
+ids2 <- c("FT4641", "FT4644")
 a_chr2 <- featureChromatograms(ftms, features = ids2)
 
 plot(a_chr2[1])
-abline(v = 3088.41, col = "red", lty = 2)
+abline(v = 435.277, col = "red", lty = 2)
 
 plot(a_chr2[2])
-abline(v = 3371.06, col = "red", lty = 2)
+abline(v = 422.188, col = "red", lty = 2)
 
 ```
 
@@ -331,7 +331,7 @@ split_list <- split(spa$feature_mzmed, spa$ms2_id)
 # Check for each ms2_id whether all values are identical
 mzmed_nonidentical_logical <- lapply(split_list, function(x) length(unique(x)) > 1)
 mzmed_nonidentical_total <- sum(unlist(mzmed_nonidentical_logical))
-cat(c("Of all ambiguously assigned MS2 spectra,", mzmed_nonidentical_total*100/ambiguous_assignments,"% are assigned to features with NON-identical mzmed.\n"))
+cat(c("Of all ambiguously assigned MS2 spectra,", mzmed_nonidentical_total*100/ambiguous_assignments,"% are assigned to features with NON-identical mzmed."))
 
 #closer look at ranges of mzmed values for different features assigned to same MS2
 # Function to compute range difference
@@ -346,7 +346,7 @@ mzmed_diff <- sapply(split_list, diff_fun)
 summary(mzmed_diff)
 opar <- par(mfrow = c(2, 1))
 hist(mzmed_diff, breaks = 100, main = "Distribution of feature_mzmed range per ms2_id")
-hist(mzmed_diff, xlim = c(0,0.005), breaks = 1000, main = "Distribution of feature_mzmed range per ms2_id")
+hist(mzmed_diff, xlim = c(0,0.01), breaks = 1000, main = "Distribution of feature_mzmed range per ms2_id")
 par(opar)
 
 ```
@@ -360,8 +360,8 @@ Now we can identify the MS2 spectra that are assigned to features with
 **significantly different feature_mzmed** values:
 
 ```{r}
-# Identify ms2_id with feature_mzmed range > 0.001
-significant_ms2 <- mzmed_diff[mzmed_diff > 0.001]
+# Identify ms2_id with feature_mzmed range > 0.002
+significant_ms2 <- mzmed_diff[mzmed_diff > 0.002]
 length(significant_ms2)
 cat("Of all", length(ms2_mult), "MS2 spectra that were assigned to multiple features, ", length(significant_ms2)*100/length(ms2_mult), "% was assigned to features that differ significantly in mzmed.\n")
 
@@ -376,8 +376,8 @@ different feature_mzmed** values.
 
 ```{r}
 # Define groups based on mzmed_diff
-ms2_id_non_significant <- names(mzmed_diff[mzmed_diff <= 0.001])
-ms2_id_significant <- names(mzmed_diff[mzmed_diff > 0.001])
+ms2_id_non_significant <- names(mzmed_diff[mzmed_diff <= 0.002])
+ms2_id_significant <- names(mzmed_diff[mzmed_diff > 0.002])
 
 # Compute precursorMz - feature_mzmed for all spectra
 spa$delta <- spa$precursorMz - spa$feature_mzmed
@@ -419,19 +419,14 @@ cat("For",table(close_counts)[2]*100/length(ms2_id_significant), "% of the MS2 s
 
 ```
 
-In *conclusion:*
-```{r}
+In *conclusion*, of the MS2 spectra that were assigned to at least one
+feature, 12% were assigned to multiple features. Of all MS2 spectra that
+were assigned to multiple features, 12% were assigned to
+features that differ significantly in mzmed. Of these, 92.3% could be
+assigned unambiguously to a single feature based on the difference
+precursorMz – feature_mzmed < 0.001
 
-cat("Of the MS2 spectra that were assigned to at least one feature, ",length(ms2_mult)*100/minimumone,"% was assigned to multiple features.\n")
-
-cat("Of all", length(ms2_mult), "MS2 spectra that were assigned to multiple features, ", length(significant_ms2)*100/length(ms2_mult), "% was assigned to features that differ significantly in mzmed.\n")
-
-cat("For",table(close_counts)[2]*100/length(ms2_id_significant), "% of the MS2 spectra that were assigned to features with different mzmed, one feature can be unambiguously assigned based on the deltas between precursorMz and feature_mzmed.\n" )
-
-```
-
-
-==\> 76.5% of 5% is ~3.8 % of the ambiguously assigned MS2 spectra that can
+==\> 2.3% of 12% is ~11.1% of the ambiguously assigned MS2 spectra that can
 be resolved based on precursorMz – feature_mzmed < 0.001.
 
 # Resolving multiple assignments of MS2 spectra to features
