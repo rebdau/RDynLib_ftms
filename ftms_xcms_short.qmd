@@ -98,7 +98,7 @@ the data should be loaded into memory at a time.
 
 ```{r}
 ftms <- findChromPeaks(
-    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2, snthresh = 4,
+    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2, snthresh = 6,
                         ppm = 50, prefilter = c(3, 500), mzdiff = 0.001),
     chunkSize = 2)
 ```
@@ -231,7 +231,7 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = file.path(pth, "data", "ftms_sh4_minfr.RData"))
+save(ftms, file = file.path(pth, "data", "ftms_fin6.RData"))
 ```
 
 ```{r}
