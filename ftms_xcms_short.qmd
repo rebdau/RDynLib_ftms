@@ -136,7 +136,10 @@ of the observed median widths).
 ```{r}
 mnpp <- MergeNeighboringPeaksParam(expandRt = 10, expandMz = 0.001,
                                    minProp = 0.66)
+cpp <- CleanPeaksParam(maxPeakwidth = 80)
+
 ftms <- refineChromPeaks(ftms, mnpp)
+ftms <- refineChromPeaks(ftms, cpp)
 ```
 
 We evaluate the number of peaks and the observed peak widths also after
@@ -231,7 +234,7 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = file.path(pth, "data", "ftms_fin6.RData"))
+save(ftms, file = file.path(pth, "data", "ftms_fin6_mpw80.RData"))
 ```
 
 ```{r}
