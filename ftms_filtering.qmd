@@ -419,15 +419,14 @@ cat("For",table(close_counts)[2]*100/length(ms2_id_significant), "% of the MS2 s
 
 ```
 
-In *conclusion*, of the MS2 spectra that were assigned to at least one
-feature, 12% were assigned to multiple features. Of all MS2 spectra that
-were assigned to multiple features, 12% were assigned to
-features that differ significantly in mzmed. Of these, 92.3% could be
-assigned unambiguously to a single feature based on the difference
-precursorMz – feature_mzmed < 0.001
+In *conclusion:*
+```{r}
+cat("Of the MS2 spectra that were assigned to at least one feature, ",length(ms2_mult)*100/minimumone,"% was assigned to multiple features.\n")
 
-==\> 2.3% of 12% is ~11.1% of the ambiguously assigned MS2 spectra that can
-be resolved based on precursorMz – feature_mzmed < 0.001.
+cat("Of all", length(ms2_mult), "MS2 spectra that were assigned to multiple features, ", length(significant_ms2)*100/length(ms2_mult), "% was assigned to features that differ significantly in mzmed.\n")
+
+cat("For",table(close_counts)[2]*100/length(ms2_id_significant), "% of the MS2 spectra that were assigned to features with different mzmed, one feature can be unambiguously assigned based on the deltas between precursorMz and feature_mzmed.\n" )
+```
 
 # Resolving multiple assignments of MS2 spectra to features
 
