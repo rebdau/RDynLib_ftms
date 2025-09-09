@@ -142,6 +142,16 @@ ftms <- refineChromPeaks(ftms, mnpp)
 ftms <- refineChromPeaks(ftms, cpp)
 ```
 
+Here we add *CleanPeaksParam* to remove chromatographic peaks with a retention
+time range larger than the provided maximal acceptable width (maxPeakwidth).
+
+```{r}
+cpp <- CleanPeaksParam(maxPeakwidth = 80)
+ftms <- refineChromPeaks(ftms, cpp)
+```
+
+
+
 We evaluate the number of peaks and the observed peak widths also after
 refinement.
 
@@ -234,7 +244,11 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
+
 save(ftms, file = file.path(pth, "data", "ftms_fin6_mpw80.RData"))
+
+save(ftms, file = file.path(pth, "data", "ftms_680.RData"))
+
 ```
 
 ```{r}
