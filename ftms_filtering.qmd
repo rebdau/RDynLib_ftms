@@ -255,38 +255,6 @@ increasing the sn ratio again
 
 # Explore, for all MS2 spectra that were assigned to multiple features, the feature_rtmed and feature_mzmed of these features.
 
-```{r}
-for (id in ms2_mult) {
-  a <- ms2[ms2_id == id]
-  spa <- spectraData(a)
-  
-  mzmeds <- spa$feature_mzmed
-  uniq_mzmeds <- unique(mzmeds)
-  
-  cat("Checking id:", id, "\n")
-  cat("All mzmeds:", paste(round(mzmeds, 5), collapse = ", "), "\n")
-  cat("Unique mzmeds:", paste(round(uniq_mzmeds, 5), collapse = ", "), "\n")
-  
-  print(spa[, c("feature_id", "feature_rtmed", "feature_mzmed")])
-  
-}
-
-```
-
-
-
-```{r}
-# Example 1 : FT0413 et FT0416
-ids1 <- c("FT3944", "FT3944")
-a_chr1 <- featureChromatograms(ftms, features = ids1)
-
-plot(a_chr1[1])
-abline(v = 462.78, col = "red", lty = 2)  
-
-plot(a_chr1[2])
-abline(v = 470.61, col = "red", lty = 2)
-
-```
 
 ```{r}
 # Example 2 : FT2594 et FT2595
@@ -418,6 +386,27 @@ cat("For",table(close_counts)[2]*100/length(ms2_id_significant), "% of the MS2 s
 
 ```
 
+
+
+```{r}
+a <- ms2[ms2_id == ms2_id_significant[1L]]
+print(spa <- spectraData(a))
+```
+we have just one MS2 spectra that was assigned to 2 different features
+
+bellow the Chromatograms of those features 
+```{r}
+ids2 <- c("FT0392", "FT0397")
+a_chr2 <- featureChromatograms(ftms, features = ids2)
+
+plot(a_chr2[1])
+abline(v = 135.519, col = "red", lty = 2)
+
+plot(a_chr2[2])
+abline(v = 144.079, col = "red", lty = 2)
+```
+
+
 In *conclusion:*
 ```{r}
 cat("Of the MS2 spectra that were assigned to at least one feature, ",length(ms2_mult)*100/minimumone,"% was assigned to multiple features.\n")
@@ -447,7 +436,7 @@ feature.
 select_unique_MS2 <- function(ms2, ftms) {
 
   sp <- spectraData(ms2)
-
+  
   # Create a unique identifier for each unique groupe of (dataOrigin, scanIndex)
   sp$groups <- paste0(sp$dataOrigin, "_", sp$scanIndex)
 
