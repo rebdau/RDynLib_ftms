@@ -140,7 +140,8 @@ ftms <- refineChromPeaks(ftms, mnpp)
 ```
 
 Here we add *CleanPeaksParam* to remove chromatographic peaks with a retention
-time range larger than the provided maximal acceptable width (maxPeakwidth).
+time range larger than the provided maximal acceptable width (maxPeakwidth) 
+based on 75th percentile of peak widths * 3.
 
 ```{r}
 cpp <- CleanPeaksParam(maxPeakwidth = 80)
