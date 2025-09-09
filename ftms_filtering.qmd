@@ -474,20 +474,33 @@ select_unique_MS2 <- function(ms2, ftms) {
       next  # go to the next group...
     }
 
-    #rt of the first group
+    # precursor m/z of the MS2 spectra
+    ms2_mz <- precursorMz(ms2)[gidx[1]]
+    # rt of the first group
     ms2_rt <- rtime(ms2)[gidx[1]]
-
 
     # rtmed and intensity of the feature
     rt_features <- featureDefinitions(ftms)[feature_ids, "rtmed"]
+    mz_features <- featureDefinitions(ftms)[feature_ids, "mzmed"]
+
+    # remove assignments if |precursorMz - feature_mzmed| > 0.002
+    mz_diff <- abs(ms2_mz - mz_features)
+    valid_features <- feature_ids[mz_diff <= 0.002]
+
+    # If no feature passes the mz filter so mark all as ambiguous
+    if (length(valid_features) == 0) {
+      final_feature[[gidx[1]]] <- character(0)
+      amb_f[[gidx[1]]] <- feature_ids
+      next  # go to the next group...
+    }
 
     # Initialisation
     keep_feat <- character(0) #features to keep
-    amb_feat <- feature_ids #ambiguous features
+    amb_feat <- valid_features #ambiguous features
 
     # Loop on each feature in the group
-    for (i in seq_along(feature_ids)) {
-      i_id <- feature_ids[i]
+    for (i in seq_along(valid_features)) {
+      i_id <- valid_features[i]
 
       # Case A
       # Verify if a feature was assigned at least once to a unique MS2 so there
@@ -501,9 +514,9 @@ select_unique_MS2 <- function(ms2, ftms) {
 
       # Case B
       # Calculate the RT ratio
-      num <- abs(ms2_rt - rt_features[i])
-      ratios_rt <- sapply(seq_along(feature_ids)[-i], function(j) {
-        denom <- abs(ms2_rt - rt_features[j])
+      num <- abs(ms2_rt - rt_features[feature_ids == i_id])
+      ratios_rt <- sapply(seq_along(valid_features)[-i], function(j) {
+        denom <- abs(ms2_rt - rt_features[feature_ids == valid_features[j]])
         if (denom == 0) return(Inf)
         num / denom
       })
@@ -528,6 +541,7 @@ select_unique_MS2 <- function(ms2, ftms) {
   ms2_res$ambiguous <- CharacterList(amb_f[lengths(final_feature) > 0])
   ms2_res
 }
+
 
 ms2 <- select_unique_MS2(ms2, ftms)
 ```
@@ -681,7 +695,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees is 3508:
+The total number of MSn trees is 2000:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -717,9 +731,9 @@ max_tree$MSntreeID
 ```
 
 The MSntree with maximum number of spectra corresponds to the tree,
-within dataOrigin S1R1, depending on MS2 with ScanIndex 2182 which was
-assigned to one FeatureID: FT2705 Within dataOrigin S1R1, scanIndex 2183
-(MS3), 2184 (MS3), and 2185 (MS4) are assigned to a single feature:
+within dataOrigin S1R1, depending on MS2 with ScanIndex 2532 which was
+assigned to one FeatureID: FT1159 Within dataOrigin S1R1, scanIndex 2533
+(MS3), 2534 (MS3), and 2535 (MS4) are assigned to a single feature:
 FT2705.
 
 ```{r}
@@ -738,9 +752,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 1808 The number of
-trees that go up to MS3 level is : 404 The number of trees that go up to
-MS4 level is : 1339
+The number of trees that go up to MS2 level is : 559 The number of
+trees that go up to MS3 level is : 382 The number of trees that go up to
+MS4 level is : 1059
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -781,7 +795,7 @@ msLevel(ftms_one_tree) |> table()
 ```
 
 after selecting one representative tree per feature we have now: MS2 :
-715 and MS3 : 615 and MS4 : 292
+518 and MS3 : 560 and MS4 : 269
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
@@ -794,13 +808,13 @@ length(unique(unlist(ftms_one_tree$feature_id)))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 715 unique feature and unique MSntreeID, That's mean that we
+we have 518 unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "unique_tree_ftms_ns.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "1_tree_ftms.RData"))
 ```
 
 # Session information
