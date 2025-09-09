@@ -101,7 +101,8 @@ perc_features_with_ms2
 
 ```
 
-The percentage of features with at least one MS2 is 8.46%
+The total number of features with at least one MS2 is `r n_features_with_ms2`,
+which corresponds to `r format(perc_features_with_ms2, digits = 3)`%.
 
 A summary on the number of MS2 spectra assigned to a feature is shown
 below:
@@ -124,15 +125,14 @@ sp$groups <- paste0(sp$dataOrigin, "_", sp$scanIndex)
 # Number of MS2 spectra assigned to features
 n_assigned_ms2 <- length(unique(sp$groups))
 
-
-
 # Percentage assigned
 perc_ms2_assigned <- (n_assigned_ms2 / n_total_ms2) * 100
 perc_ms2_assigned
 
 ```
 
-the percentage of MS2 spectra that are assigned to a feature is 17%
+The total number of assigned MS2 spectra is `r n_assigned_ms2`, which
+corresponds to a percentage of `r format(perc_ms2_assigned, digits = 3)`.
 
 Note that an MS2 spectrum could also be assigned to more than one
 feature. The total number of MS2 spectra assigned to more than one
@@ -260,16 +260,16 @@ increasing the sn ratio again
 for (id in ms2_mult) {
   a <- ms2[ms2_id == id]
   spa <- spectraData(a)
-  
+
   mzmeds <- spa$feature_mzmed
   uniq_mzmeds <- unique(mzmeds)
-  
+
   cat("Checking id:", id, "\n")
   cat("All mzmeds:", paste(round(mzmeds, 5), collapse = ", "), "\n")
   cat("Unique mzmeds:", paste(round(uniq_mzmeds, 5), collapse = ", "), "\n")
-  
+
   print(spa[, c("feature_id", "feature_rtmed", "feature_mzmed")])
-  
+
 }
 
 ```
@@ -282,7 +282,7 @@ ids1 <- c("FT4356", "FT4357")
 a_chr1 <- featureChromatograms(ftms, features = ids1)
 
 plot(a_chr1[1])
-abline(v = 462.84, col = "red", lty = 2)  
+abline(v = 462.84, col = "red", lty = 2)
 
 plot(a_chr1[2])
 abline(v = 470.61, col = "red", lty = 2)
@@ -409,7 +409,7 @@ threshold <- round(threshold,3)
 #reduce dataset to ms2_id_significant
 spar <- spa[spa$ms2_id %in% ms2_id_significant,]
 spar$ms2_id <- factor(spar$ms2_id)
-split_deltas <- split(abs(spar$delta), 
+split_deltas <- split(abs(spar$delta),
                       spar$ms2_id)
 close_counts <- sapply(split_deltas, function(x) sum(x <= threshold, na.rm = TRUE))
 

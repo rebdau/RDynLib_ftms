@@ -189,7 +189,7 @@ We can see from the plot above that there is one sample that has been
 largely adjusted, so it goes up to 15 seconds.
 
 
-We continue the preprocessing with the final correspondence analysis. 
+We continue the preprocessing with the final correspondence analysis.
 We adapt now the settings, in particular
 the bw parameter, that can be much stricter because of the properly
 aligned data set. Again, we test the settings on the extracted ion
