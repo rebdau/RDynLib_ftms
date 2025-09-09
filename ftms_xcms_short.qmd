@@ -98,7 +98,7 @@ the data should be loaded into memory at a time.
 
 ```{r}
 ftms <- findChromPeaks(
-    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2, snthresh = 4,
+    ftms, CentWaveParam(peakwidth = c(20, 80), integrate = 2, snthresh = 6,
                         ppm = 50, prefilter = c(3, 500), mzdiff = 0.001),
     chunkSize = 2)
 ```
@@ -138,6 +138,17 @@ mnpp <- MergeNeighboringPeaksParam(expandRt = 10, expandMz = 0.001,
                                    minProp = 0.66)
 ftms <- refineChromPeaks(ftms, mnpp)
 ```
+
+Here we add *CleanPeaksParam* to remove chromatographic peaks with a retention
+time range larger than the provided maximal acceptable width (maxPeakwidth) 
+based on 75th percentile of peak widths * 3.
+
+```{r}
+cpp <- CleanPeaksParam(maxPeakwidth = 80)
+ftms <- refineChromPeaks(ftms, cpp)
+```
+
+
 
 We evaluate the number of peaks and the observed peak widths also after
 refinement.
@@ -231,7 +242,9 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = file.path(pth, "data", "ftms_sh4_minfr.RData"))
+
+save(ftms, file = file.path(pth, "data", "ftms_680.RData"))
+
 ```
 
 ```{r}
