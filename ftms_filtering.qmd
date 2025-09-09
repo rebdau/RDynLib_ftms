@@ -433,7 +433,7 @@ assignments. All other assignments are dropped for the respective
 feature.
 
 ```{r}
-select_unique_MS2 <- function(ms2, ftms) {
+select_unique_MS2 <- function(ms2, ftms, threshold) {
 
   sp <- spectraData(ms2)
   
@@ -485,7 +485,7 @@ select_unique_MS2 <- function(ms2, ftms) {
 
     # remove assignments if |precursorMz - feature_mzmed| > 0.002
     mz_diff <- abs(ms2_mz - mz_features)
-    valid_features <- feature_ids[mz_diff <= 0.002]
+    valid_features <- feature_ids[mz_diff <= threshold]
 
     # If no feature passes the mz filter so mark all as ambiguous
     if (length(valid_features) == 0) {
@@ -543,7 +543,7 @@ select_unique_MS2 <- function(ms2, ftms) {
 }
 
 
-ms2 <- select_unique_MS2(ms2, ftms)
+ms2 <- select_unique_MS2(ms2, ftms, threshold = 0.002) 
 ```
 
 Removing duplicated assignment reduced the data set to `r length(ms2)`
