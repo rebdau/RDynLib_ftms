@@ -140,14 +140,13 @@ ftms <- refineChromPeaks(ftms, mnpp)
 ```
 
 Here we add *CleanPeaksParam* to remove chromatographic peaks with a retention
-time range larger than the provided maximal acceptable width (maxPeakwidth) 
+time range larger than the provided maximal acceptable width (maxPeakwidth)
 based on 75th percentile of peak widths * 3.
 
 ```{r}
 cpp <- CleanPeaksParam(maxPeakwidth = 80)
 ftms <- refineChromPeaks(ftms, cpp)
 ```
-
 
 
 We evaluate the number of peaks and the observed peak widths also after
@@ -200,7 +199,7 @@ We can see from the plot above that there is one sample that has been
 largely adjusted, so it goes up to 15 seconds.
 
 
-We continue the preprocessing with the final correspondence analysis. 
+We continue the preprocessing with the final correspondence analysis.
 We adapt now the settings, in particular
 the bw parameter, that can be much stricter because of the properly
 aligned data set. Again, we test the settings on the extracted ion
