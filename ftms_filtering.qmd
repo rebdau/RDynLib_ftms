@@ -708,54 +708,6 @@ consider keeping only *high quality* signals? trying to remove these
 noisy features/chromatographic peaks? ==\> we could try gradually
 increasing the sn ratio again
 
-# Explore, for all MS2 spectra that were assigned to multiple features, the feature_rtmed and feature_mzmed of these features.
-
-```{r}
-for (id in ms2_mult) {
-  a <- ms2[ms2_id == id]
-  spa <- spectraData(a)
-
-  mzmeds <- spa$feature_mzmed
-  uniq_mzmeds <- unique(mzmeds)
-
-  cat("Checking id:", id, "\n")
-  cat("All mzmeds:", paste(round(mzmeds, 5), collapse = ", "), "\n")
-  cat("Unique mzmeds:", paste(round(uniq_mzmeds, 5), collapse = ", "), "\n")
-
-  print(spa[, c("feature_id", "feature_rtmed", "feature_mzmed")])
-
-}
-
-```
-
-
-
-```{r}
-# Example 1 : FT0413 et FT0416
-ids1 <- c("FT3944", "FT3944")
-a_chr1 <- featureChromatograms(ftms, features = ids1)
-
-plot(a_chr1[1])
-abline(v = 462.78, col = "red", lty = 2)
-
-plot(a_chr1[2])
-abline(v = 470.61, col = "red", lty = 2)
-
-```
-
-```{r}
-# Example 2 : FT2594 et FT2595
-ids2 <- c("FT4641", "FT4644")
-a_chr2 <- featureChromatograms(ftms, features = ids2)
-
-plot(a_chr2[1])
-abline(v = 435.277, col = "red", lty = 2)
-
-plot(a_chr2[2])
-abline(v = 422.188, col = "red", lty = 2)
-
-```
-
 
 
 # Explore MS2 spectra that have been assigned to features with different mzmed
@@ -873,6 +825,27 @@ cat("For",table(close_counts)[2]*100/length(ms2_id_significant), "% of the MS2 s
 
 ```
 
+
+
+```{r}
+a <- ms2[ms2_id == ms2_id_significant[1L]]
+print(spa <- spectraData(a))
+```
+we have just one MS2 spectra that was assigned to 2 different features
+
+bellow the Chromatograms of those features
+```{r}
+ids2 <- c("FT0392", "FT0397")
+a_chr2 <- featureChromatograms(ftms, features = ids2)
+
+plot(a_chr2[1])
+abline(v = 135.519, col = "red", lty = 2)
+
+plot(a_chr2[2])
+abline(v = 144.079, col = "red", lty = 2)
+```
+
+
 In *conclusion:*
 ```{r}
 cat("Of the MS2 spectra that were assigned to at least one feature, ",length(ms2_mult)*100/minimumone,"% was assigned to multiple features.\n")
@@ -899,7 +872,7 @@ assignments. All other assignments are dropped for the respective
 feature.
 
 ```{r}
-select_unique_MS2 <- function(ms2, ftms) {
+select_unique_MS2 <- function(ms2, ftms, threshold) {
 
   sp <- spectraData(ms2)
 
@@ -940,20 +913,33 @@ select_unique_MS2 <- function(ms2, ftms) {
       next  # go to the next group...
     }
 
-    #rt of the first group
+    # precursor m/z of the MS2 spectra
+    ms2_mz <- precursorMz(ms2)[gidx[1]]
+    # rt of the first group
     ms2_rt <- rtime(ms2)[gidx[1]]
-
 
     # rtmed and intensity of the feature
     rt_features <- featureDefinitions(ftms)[feature_ids, "rtmed"]
+    mz_features <- featureDefinitions(ftms)[feature_ids, "mzmed"]
+
+    # remove assignments if |precursorMz - feature_mzmed| > 0.002
+    mz_diff <- abs(ms2_mz - mz_features)
+    valid_features <- feature_ids[mz_diff <= threshold]
+
+    # If no feature passes the mz filter so mark all as ambiguous
+    if (length(valid_features) == 0) {
+      final_feature[[gidx[1]]] <- character(0)
+      amb_f[[gidx[1]]] <- feature_ids
+      next  # go to the next group...
+    }
 
     # Initialisation
     keep_feat <- character(0) #features to keep
-    amb_feat <- feature_ids #ambiguous features
+    amb_feat <- valid_features #ambiguous features
 
     # Loop on each feature in the group
-    for (i in seq_along(feature_ids)) {
-      i_id <- feature_ids[i]
+    for (i in seq_along(valid_features)) {
+      i_id <- valid_features[i]
 
       # Case A
       # Verify if a feature was assigned at least once to a unique MS2 so there
@@ -967,9 +953,9 @@ select_unique_MS2 <- function(ms2, ftms) {
 
       # Case B
       # Calculate the RT ratio
-      num <- abs(ms2_rt - rt_features[i])
-      ratios_rt <- sapply(seq_along(feature_ids)[-i], function(j) {
-        denom <- abs(ms2_rt - rt_features[j])
+      num <- abs(ms2_rt - rt_features[feature_ids == i_id])
+      ratios_rt <- sapply(seq_along(valid_features)[-i], function(j) {
+        denom <- abs(ms2_rt - rt_features[feature_ids == valid_features[j]])
         if (denom == 0) return(Inf)
         num / denom
       })
@@ -995,7 +981,8 @@ select_unique_MS2 <- function(ms2, ftms) {
   ms2_res
 }
 
-ms2 <- select_unique_MS2(ms2, ftms)
+
+ms2 <- select_unique_MS2(ms2, ftms, threshold = 0.002)
 ```
 
 Removing duplicated assignment reduced the data set to `r length(ms2)`
@@ -1147,7 +1134,7 @@ spectraVariables(ftms_msn_tree)
 
 ```
 
-The total number of MSn trees is 3508:
+The total number of MSn trees is 2000:
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
@@ -1183,9 +1170,9 @@ max_tree$MSntreeID
 ```
 
 The MSntree with maximum number of spectra corresponds to the tree,
-within dataOrigin S1R1, depending on MS2 with ScanIndex 2182 which was
-assigned to one FeatureID: FT2705 Within dataOrigin S1R1, scanIndex 2183
-(MS3), 2184 (MS3), and 2185 (MS4) are assigned to a single feature:
+within dataOrigin S1R1, depending on MS2 with ScanIndex 2532 which was
+assigned to one FeatureID: FT1159 Within dataOrigin S1R1, scanIndex 2533
+(MS3), 2534 (MS3), and 2535 (MS4) are assigned to a single feature:
 FT2705.
 
 ```{r}
@@ -1204,9 +1191,9 @@ table(max_level_per_tree$max_level)
 
 ```
 
-The number of trees that go up to MS2 level is : 1808 The number of
-trees that go up to MS3 level is : 404 The number of trees that go up to
-MS4 level is : 1339
+The number of trees that go up to MS2 level is : 559 The number of
+trees that go up to MS3 level is : 382 The number of trees that go up to
+MS4 level is : 1059
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
@@ -1247,7 +1234,7 @@ msLevel(ftms_one_tree) |> table()
 ```
 
 after selecting one representative tree per feature we have now: MS2 :
-715 and MS3 : 615 and MS4 : 292
+518 and MS3 : 560 and MS4 : 269
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
@@ -1260,13 +1247,13 @@ length(unique(unlist(ftms_one_tree$feature_id)))
 length(unique(ftms_one_tree$MSntreeID))
 ```
 
-we have 715 unique feature and unique MSntreeID, That's mean that we
+we have 518 unique feature and unique MSntreeID, That's mean that we
 have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "unique_tree_ftms_ns.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "1_tree_ftms.RData"))
 ```
 
 # Session information
