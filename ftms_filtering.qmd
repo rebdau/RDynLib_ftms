@@ -41,7 +41,7 @@ First we load the `XcmsExperiment` ftms object with the preprocessing
 results.
 
 ```{r}
-load(file.path(pth, "data", "ftms_nofill.RData"))
+load(file.path(pth, "data", "ftms_fill.RData"))
 class(ftms)
 ```
 
@@ -57,7 +57,7 @@ each feature from `ftms` object.
 > ranges of any chromatographic peak of a feature.
 
 ```{r}
-ms2 <- featureSpectra(ftms, msLevel = 2)
+ms2 <- featureSpectra(dropFilledChromPeaks(ftms), msLevel = 2, skipFilled = TRUE)
 
 msLevel(ms2) |>
   table()
@@ -379,6 +379,7 @@ number of unique MSntreeID to ensure that we have one tree per feature.
 
 ```{r}
 length(unique(unlist(ftms_one_tree$feature_id)))
+
 ```
 
 ```{r}
