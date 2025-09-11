@@ -208,7 +208,7 @@ signal.
 ```{r}
 #' Configure settings
 pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
-                        bw = 2, minFraction = 0.3, binSize = 0.1,
+                        bw = 4, minFraction = 0.3, binSize = 0.1,
                         ppm = 10)
 
 ```
@@ -235,6 +235,12 @@ ftms <- fillChromPeaks(ftms, param = ChromPeakAreaParam())
 ```
 
 ```{r}
+ftms <- dropFilledChromPeaks(ftms)
+```
+
+
+
+```{r}
 sum(is.na(featureValues(ftms)))
 head(featureValues(ftms))
 ```
@@ -242,7 +248,7 @@ head(featureValues(ftms))
 ```{r}
 #' Save the result object
 
-save(ftms, file = file.path(pth, "data", "ftms_680.RData"))
+save(ftms, file = file.path(pth, "data", "ftms_nofill.RData"))
 
 ```
 
