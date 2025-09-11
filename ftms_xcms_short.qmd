@@ -128,6 +128,26 @@ quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
 quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
 ```
 
+
+`chromPeakSummary(ftms)` calculates extra peak shape descriptors, including beta_cor. 
+`beta_cor` is the correlation coefficient between the extracted ion chromatogram (EIC) peak and an idealized Gaussian peak fitted to it.
+We can use this peak shape descriptor to filter out junk peaks. 
+Here, we first look at the distribution of beta_cor:
+
+```{r}
+beta_metrics <- chromPeakSummary(ftms, param=BetaDistributionParam())
+colnames(beta_metrics)
+summary(beta_metrics[, "beta_cor"])
+
+hist(beta_metrics[, "beta_cor"], breaks = 50, main = "Distribution of beta_cor", xlab = "beta_cor")
+
+
+
+```
+
+`beta_cor` ranges from -1.0 to 1.0 and has median `summary(beta_metrics[, "beta_cor"])[3]`. Most peaks thus have a `beta-cor`close to 1. 
+Negative beta_cor values indicate anti-correlation of observed signal with Gaussian-like model. These peaks seem to have a valley instead of an apex, maybe multiple shoulders or just baseline fluctuation. Peaks with **negative beta_cor must be filtered out**. But we could first refine the peaks and evaluate the beta_cor values again after refinement before filtering.
+
 We next perform the **chromatographic peak refinement** to reduce the
 number of potential centWave-specific peak detection artifacts. We
 choose settings that depend on the observed peak widths above (i.e., about half
@@ -137,16 +157,25 @@ of the observed median widths).
 mnpp <- MergeNeighboringPeaksParam(expandRt = 10, expandMz = 0.001,
                                    minProp = 0.66)
 ftms <- refineChromPeaks(ftms, mnpp)
-```
 
+beta_metrics <- chromPeakSummary(ftms, param=BetaDistributionParam())
+summary(beta_metrics[, "beta_cor"])
+hist(beta_metrics[, "beta_cor"], breaks = 50, main = "Distribution of beta_cor", xlab = "beta_cor")
+```
+The median `beta_cor` value increased slightly: `summary(beta_metrics[, "beta_cor"])[3]`. 
 Here we add *CleanPeaksParam* to remove chromatographic peaks with a retention
 time range larger than the provided maximal acceptable width (maxPeakwidth)
-based on 75th percentile of peak widths * 3.
+based on (75th percentile of peak widths) * 3.
 
 ```{r}
 cpp <- CleanPeaksParam(maxPeakwidth = 80)
 ftms <- refineChromPeaks(ftms, cpp)
+
+beta_metrics <- chromPeakSummary(ftms, param=BetaDistributionParam())
+summary(beta_metrics[, "beta_cor"])
+hist(beta_metrics[, "beta_cor"], breaks = 50, main = "Distribution of beta_cor", xlab = "beta_cor")
 ```
+Again, the median `beta_cor` value increased slightly: `summary(beta_metrics[, "beta_cor"])[3]`, indicating that a larger fraction of the peaks have a good peak shape.
 
 
 We evaluate the number of peaks and the observed peak widths also after
@@ -158,8 +187,32 @@ nrow(pks)
 table(pks[, "sample"])
 quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
 quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
+
+```
+Now we want to filter out junk peaks based on `beta_cor < 0`.
+
+```{r}
+beta_metrics <- chromPeakSummary(ftms, param=BetaDistributionParam())
+keep_idx <- (beta_metrics[, "beta_cor"] > 0)
+filtered_pks <- pks[keep_idx, ]
+chromPeaks(ftms) <- filtered_pks
+
+
 ```
 
+We evaluate the number of peaks and the observed peak widths and shapes.
+
+```{r}
+pks <- chromPeaks(ftms)
+nrow(pks)
+table(pks[, "sample"])
+quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
+quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
+
+beta_metrics <- chromPeakSummary(ftms, param=BetaDistributionParam())
+summary(beta_metrics[, "beta_cor"])
+hist(beta_metrics[, "beta_cor"], breaks = 50, main = "Distribution of beta_cor", xlab = "beta_cor")
+```
 ## Retention time alignment
 
 We next perform an initial correspondence analysis that is needed for
