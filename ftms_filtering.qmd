@@ -41,7 +41,7 @@ First we load the `XcmsExperiment` ftms object with the preprocessing
 results.
 
 ```{r}
-load(file.path(pth, "data", "ftms_fill.RData"))
+load(file.path(pth, "data", "ftms_fill_filtergauss.RData"))
 class(ftms)
 ```
 
@@ -84,9 +84,8 @@ table(msLevel(s))
 
 
 
-In total, there were 20904 MS2 spectra. This means that 91.10% of the MS2
-spectra ((20904-1860)\*100/20904) could not be assigned to any
-chromatographic peak.
+In total, there were `r table(msLevel(s))[2]` MS2 spectra. This means that `r round((table(msLevel(s))[2]-length(ms2$feature_id))*100/table(msLevel(s))[2], 1)` % of the MS2
+spectra could not be assigned to any chromatographic peak.
 
 The percentage of features with at least one MS2:
 
@@ -278,40 +277,22 @@ spectraVariables(ftms_msn_tree)
 length(unique(ftms_msn_tree$MSntreeID))
 ```
 
-for in total `r length(unique(ftms_msn_tree$feature_id))` features. The
+There are in total `r length(unique(ftms_msn_tree$MSntreeID))` spectral (fragmentation) trees for in total `r length(unique(ftms_msn_tree$feature_id))` features. The
 distribution of the lengths of the fragmentation trees is
 
 ```{r}
 ftms_msn_tree$MSntreeID |>
     table() |>
     quantile()
+
+table(table(ftms_msn_tree$MSntreeID))
 ```
 
-There is apparently (at least) one tree with 4 spectra. Extracting this
-particular MSn tree.
+Fragmentation trees have maximally 4 spectra. 
+This is in accordance with the setup of the ion trap instrument: The two most intense first order product ions were refragmented (if their intensity was above a threshold), resulting in maximally two MS3 spectra, and the most intense second order product ion of the most intense first order product ion was also refragmented (if it's intensity was above a threshold), resulting in maximally one MS4 spectrum.
+So, a fragmentation tree can maximally consist of one MS2 spectrum + two MS3 spectra + one MS4 spectrum = four spectra.
 
-```{r}
-max_index <- ftms_msn_tree$MSntreeID |>
-    table() |>
-    as.integer() |>
-    which.max()
 
-max_tree <- ftms_msn_tree[ftms_msn_tree$MSntreeID == max_index]
-max_tree$rtime
-max_tree$msLevel
-max_tree$precScanNum
-max_tree$scanIndex
-max_tree$acquisitionNum
-max_tree$dataOrigin
-max_tree$feature_id
-max_tree$MSntreeID
-```
-
-The MSntree with maximum number of spectra corresponds to the tree,
-within dataOrigin S1R1, depending on MS2 with ScanIndex 2182 which was
-assigned to one FeatureID: FT1254 Within dataOrigin S1R1, scanIndex 2183
-(MS3), 2184 (MS3), and 2185 (MS4) are assigned to a single feature:
-FT1254.
 
 ```{r}
 ## we stored the tree ids and the msLevels to a dataframe
@@ -325,13 +306,13 @@ max_level_per_tree <- df %>%
   summarise(max_level = max(msLevel), .groups = "drop")
 
 
-table(max_level_per_tree$max_level)
+print(t <- table(max_level_per_tree$max_level))
 
 ```
 
-The number of trees that go up to MS2 level is : 503 The number of
-trees that go up to MS3 level is : 377 The number of trees that go up to
-MS4 level is : 980
+The number of trees that go up to MS2 level is : `r t[1]`. The number of
+trees that go up to MS3 level is : `r t[2]`. The number of trees that go up to
+MS4 level is : `r t[3]`.
 
 Next we select one most representative tree per feature based on the
 longest one and if we have many, we select one tree with the highest MS2
