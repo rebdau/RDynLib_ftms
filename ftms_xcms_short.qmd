@@ -163,13 +163,12 @@ ftms <- refineChromPeaks(ftms, mnpp)
 
 Here we add *CleanPeaksParam* to remove chromatographic peaks with a retention
 time range larger than the provided maximal acceptable width (maxPeakwidth)
-based on 75th percentile of peak widths * 3.
+based on (75th percentile of peak widths) * 3.
 
 ```{r}
 cpp <- CleanPeaksParam(maxPeakwidth = 80)
 ftms <- refineChromPeaks(ftms, cpp)
 ```
-
 
 We evaluate the number of peaks and the observed peak widths also after
 refinement.
@@ -180,6 +179,103 @@ nrow(pks)
 table(pks[, "sample"])
 quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
 quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
+```
+
+At last we calculate chromatographic peak quality metrics using the
+`chromPeakSummary()` function with the `BetaDistributionParam()`. This resulting
+extra peak shape descriptors, including *beta_cor* can then be used to filter
+low quality peaks. *beta_cor* is the correlation coefficient between the
+extracted ion chromatogram (EIC) peak and an idealized Gaussian peak fitted to
+it. We can use this peak shape descriptor to filter out junk peaks. Here, we
+first look at the distribution of beta_cor:
+
+```{r}
+beta_metrics <- chromPeakSummary(ftms, param = BetaDistributionParam())
+colnames(beta_metrics)
+summary(beta_metrics[, "beta_cor"])
+
+hist(beta_metrics[, "beta_cor"], breaks = 50,
+     main = "Distribution of beta_cor", xlab = "beta_cor")
+```
+
+`beta_cor` ranges from -1.0 to 1.0 and has median
+`r median(beta_metrics[, "beta_cor"], na.rm = TRUE)`.
+Most peaks thus have a `beta-cor`close to 1. Negative beta_cor
+values indicate anti-correlation of observed signal with Gaussian-like
+model. These peaks seem to have a valley instead of an apex, maybe multiple
+shoulders or just baseline fluctuation. Peaks with **negative beta_cor must be
+filtered out**. But we could first refine the peaks and evaluate the beta_cor
+values again after refinement before filtering.
+
+```{r}
+#' silently plotting and saving examples for good, intermediate and bad quality
+set.seed(123)
+#' Selecting 12 random peaks with a negative beta_cor
+cid <- rownames(beta_metrics)[which(beta_metrics[, "beta_cor"] < -0.5)] |>
+    sample(size = 12)
+eics <- chromPeakChromatograms(ftms, peaks = cid)
+#' Saving the EICs to a file
+dr <- file.path("images", "chrom_peak_evaluation")
+dir.create(dr, recursive = TRUE, showWarnings = FALSE)
+png(filename = file.path(dr, "chrom_peaks_negative_beta_cor.png"),
+    width = 15, height = 15, units = "cm", res = 600, pointsize = 6)
+plot(eics)
+dev.off()
+
+#' Selecting 12 random peaks with beta_cor around 0
+cid <- rownames(beta_metrics)[which(beta_metrics[, "beta_cor"] > -0.2 &
+                                    beta_metrics[, "beta_cor"] < 0.2)] |>
+    sample(size = 12)
+eics <- chromPeakChromatograms(ftms, peaks = cid)
+#' Saving the EICs to a file
+png(filename = file.path(dr, "chrom_peaks_0_beta_cor.png"),
+    width = 15, height = 15, units = "cm", res = 600, pointsize = 6)
+plot(eics)
+dev.off()
+
+#' Selecting 12 random peaks with beta_cor around 1
+cid <- rownames(beta_metrics)[which(beta_metrics[, "beta_cor"] > 0.9)] |>
+    sample(size = 12)
+eics <- chromPeakChromatograms(ftms, peaks = cid)
+#' Saving the EICs to a file
+png(filename = file.path(dr, "chrom_peaks_1_beta_cor.png"),
+    width = 15, height = 15, units = "cm", res = 600, pointsize = 6)
+plot(eics)
+dev.off()
+
+#' Selecting 12 peaks with a NA beta cor
+cid <- rownames(beta_metrics)[is.na(beta_metrics[, "beta_cor"])] |>
+    sample(size = 12)
+eics <- chromPeakChromatograms(ftms, peaks = cid)
+#' Saving the EICs to a file
+png(filename = file.path(dr, "chrom_peaks_NA_beta_cor.png"),
+    width = 15, height = 15, units = "cm", res = 600, pointsize = 6)
+plot(eics)
+dev.off()
+
+```
+
+Now we want to filter out junk peaks based on `beta_cor < 0`. This will remove
+`r length(which(beta_metrics[, "beta_cor"] < 0))` peaks with a negative beta
+correlation and `r sum(is.na(beta_metrics[, "beta_cor"]))` peaks with a missing
+beta correlation value of the in total
+`r nrow(beta_metrics)` chromatographic peaks.
+
+```{r}
+#' Keep only chrom peaks with a positive correlation, removing also those
+#' with a missing value.
+ftms <- filterChromPeaks(ftms, keep = which(beta_metrics[, "beta_cor"] > 0))
+```
+
+We evaluate the number of peaks and the observed peak widths.
+
+```{r}
+pks <- chromPeaks(ftms)
+nrow(pks)
+table(pks[, "sample"])
+quantile(unname(pks[,"rtmax"] - pks[,"rtmin"]))
+quantile(unname(pks[,"mzmax"] - pks[,"mzmin"]))
+
 ```
 
 ## Retention time alignment
