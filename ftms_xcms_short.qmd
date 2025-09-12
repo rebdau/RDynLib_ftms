@@ -103,28 +103,6 @@ ftms <- findChromPeaks(
     chunkSize = 2)
 ```
 
-
-
-```{r}
-param <- BetaDistributionParam()
-chromPeakSummary(
-  ftms,
-  param,
-  msLevel = 1L,
-  chunkSize = 2L,
-  BPPARAM = bpparam()
-)
-```
-
-
-
-
-
-
-
-
-
-
 > The `xcms::findChromPeaks()` function transforms the
 > `MsExperiment` object (originally created using
 > `MsExperiment::readMsExperiment()` with mzML files and sample
@@ -139,6 +117,7 @@ full data set. The number of peaks per sample are:
 
 ```{r}
 pks <- chromPeaks(ftms)
+nrow(pks)
 table(pks[, "sample"])
 ```
 
@@ -360,7 +339,7 @@ head(featureValues(ftms))
 ```{r}
 #' Save the result object
 
-save(ftms, file = file.path(pth, "data", "ftms_fill.RData"))
+save(ftms, file = file.path(pth, "data", "ftms_fill_filtergauss.RData"))
 
 ```
 
