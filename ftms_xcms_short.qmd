@@ -128,8 +128,6 @@ quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
 quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
 ```
 
-```{r}
-
 We next perform the **chromatographic peak refinement** to reduce the
 number of potential centWave-specific peak detection artifacts. We
 choose settings that depend on the observed peak widths above (i.e., about half
