@@ -103,6 +103,28 @@ ftms <- findChromPeaks(
     chunkSize = 2)
 ```
 
+
+
+```{r}
+param <- BetaDistributionParam()
+chromPeakSummary(
+  ftms,
+  param,
+  msLevel = 1L,
+  chunkSize = 2L,
+  BPPARAM = bpparam()
+)
+```
+
+
+
+
+
+
+
+
+
+
 > The `xcms::findChromPeaks()` function transforms the
 > `MsExperiment` object (originally created using
 > `MsExperiment::readMsExperiment()` with mzML files and sample
@@ -341,6 +363,7 @@ head(featureValues(ftms))
 save(ftms, file = file.path(pth, "data", "ftms_fill.RData"))
 
 ```
+
 
 ```{r}
 nrow(featureDefinitions(ftms))
