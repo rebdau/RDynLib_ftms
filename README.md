@@ -22,4 +22,5 @@ This folder contains the following files:
 1. *centroiding.qmd*
 2. *ftms_preprocessing.qmd*
 3. *ftms_filtering.qmd*
+4. *ftms_assembled.qmd*
 
