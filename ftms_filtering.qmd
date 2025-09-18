@@ -14,8 +14,7 @@ editor:
 
 This Quarto document presents the analysis of FTMS flaxseed data for
 selecting one representative tree per feature. Preprocessing and feature
-definition was performed in
-[ftms_preprocessing.qmd](ftms_preprocessing.qmd).
+definition was performed in [Preprocessing steps](ftms_xcms_short.qmd).
 
 # Data import
 
@@ -353,7 +352,7 @@ print (ta <- msLevel(ftms_one_tree) |> table())
 ```
 
 after selecting one representative tree per feature we have now: MS2 :
-`r ta[1]` and `r ta[2]` and MS4 : `r ta[3]`
+`r ta[1]`, MS3 : `r ta[2]`, and MS4 : `r ta[3]`.
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MSntreeID to ensure that we have one tree per feature.
