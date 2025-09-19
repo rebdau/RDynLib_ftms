@@ -34,16 +34,16 @@ pth <- getwd()
 pth
 ```
 
-First we load the `Spectra` ftms object with one representative tree per
+First we load the `Spectra` ftms_one_tree object with one representative tree per
 feature.
 
 ```{r}
 load(file.path(pth, "data", "ftms_unique_tree.RData"))
 class(ftms_one_tree)
 ```
-
+## Preprocessing: round mz and remove duplicates
 Next we round `mz` values to the first integer using `round_perl()`
-function
+function and keep only the most intense peak if rounding results in duplicated mz.
 
 ```{r}
 round_perl <- function(number) {
@@ -52,7 +52,16 @@ round_perl <- function(number) {
 
 peaks_round_mz <- function(x, spectrumMsLevel, ...) {
     x[, 1L] <- round_perl(x[, 1L])
-    x
+    df <- as.data.frame(x)
+  colnames(df) <- c("mz", "intensity")
+  # Keep only highest intensity for duplicated mz
+  df <- df %>%
+    group_by(mz) %>%
+    slice_max(order_by = intensity, n = 1, with_ties = FALSE) %>%
+    arrange(mz)
+  # Return as matrix
+  as.matrix(df)
+
 }
 
 ftms_one_tree <- addProcessing(ftms_one_tree, peaks_round_mz)
@@ -60,23 +69,9 @@ ftms_one_tree <- addProcessing(ftms_one_tree, peaks_round_mz)
 
 ```
 
-keep only the most intense peak if the same mz is repeated in the same
-spectrum
 
-```{r}
-#'Clean a single spectrum
-#'keep only the most intense peak if the same mz is repeated
-clean_spectrum <- function(spectrum) {
-  as.data.frame(spectrum) %>%
-    group_by(mz) %>%
-    slice_max(order_by = intensity, n = 1, with_ties = FALSE) %>%
-    arrange(mz) %>%
-    as.matrix()
-}
-
-```
-
-Combine across levels (sum intensities if same mz)
+## Combine spectra from the same tree
+Create a function that takes a list of spectra (matrices), sums intensities for identical m/z values across spectra, and returns a merged spectrum.
 
 ```{r}
 #'Combine spectra across a tree
@@ -91,11 +86,15 @@ combine_spectra <- function(spectra_list) {
 }
 ```
 
+
+## Create assembled spectra object
+
 final function to create a new assembled spectra object
 
 ```{r}
 
 create_assembled_spectra <- function(ftms) {
+  #'ftms must be a spectra object
   #'Converting the backend to MsBackendMemory 
   #'so we could modify the peaksData
   ftms <- setBackend(ftms, MsBackendMemory())
@@ -103,51 +102,40 @@ create_assembled_spectra <- function(ftms) {
   pd_list <- peaksData(ftms)
   tree_ids <- unique(meta$MSntreeID)
   
-  assembled_list <- list()
+  assembled_list <- vector("list", length(tree_ids))
+  k <- 0
   
   for (tree_id in tree_ids) {
     idx <- which(meta$MSntreeID == tree_id)
     ms_levels <- meta$msLevel[idx]
     
-    #'First clean each spectrum individually 
-    #'(remove duplicate mz by keeping the max intensity)
-    cleaned_spectra <- lapply(pd_list[idx], clean_spectrum)
+    #'Use already preprocessed peaks 
+    spectra_list <- pd_list[idx]
     
-    #'If a tree has only MS2 level, we copy the MS2
-    #'row to the new spectra object as is it (after cleaning)
-    if (max(ms_levels) <= 2L) {
+    # Combine all spectra by summing intensities for matching m/z
+    merged_spec <- combine_spectra(spectra_list)
+    
+    # Use metadata from the first MS2 spectrum
       ms2_row <- idx[ms_levels == 2][1]
       ms2_meta <- meta[ms2_row, , drop = FALSE]
+      
+    # create new assembled spectrum
       df <- ms2_meta
       #'Mark it as assembled
       df$spectrum.type <- "assembled"
       df$MSntreeID <- tree_id
       #copy the same mz and intensity (already cleaned)
-      df$mz <- list(cleaned_spectra[[which(ms_levels == 2)[1]]][, "mz"])
-      df$intensity <- list(cleaned_spectra[[which(ms_levels == 2)[1]]][, "intensity"])
+      df$mz <- list(merged_spec[, "mz"])
+      df$intensity <- list(merged_spec[, "intensity"])
+      
+      k <- k + 1
       #'Convert the modified metadata+peaks into a new 
       #'Spectra object and append it to assembled_list
-      assembled_list[[length(assembled_list) + 1]] <- Spectra(df)
-      next
+      assembled_list[[k]] <- Spectra(df)
     }
     
-    #'If a tree has more than MS2 level
-    #'Combine all cleaned spectra by summing intensities
-    merged_spec <- combine_spectra(cleaned_spectra)
+  
     
-    #'Copy spectraData from the MS2 level 
-    #'of each tree to the new spectra object
-    ms2_row <- idx[ms_levels == 2][1]
-    ms2_meta <- meta[ms2_row, , drop = FALSE]
-    df <- ms2_meta
-    df$spectrum.type <- "assembled"
-    df$MSntreeID <- tree_id
-    #'assign the assembled spectrum to the new spectra object
-    df$mz <- list(merged_spec[, "mz"])
-    df$intensity <- list(merged_spec[, "intensity"])
-    
-    assembled_list[[length(assembled_list) + 1]] <- Spectra(df)
-  }
   
   if (length(assembled_list) == 0) {
     warning("No assembled spectra found!")
