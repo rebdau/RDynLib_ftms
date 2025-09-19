@@ -145,7 +145,11 @@ time range larger than the provided maximal acceptable width (maxPeakwidth)
 based on (75th percentile of peak widths) * 3.
 
 ```{r}
-cpp <- CleanPeaksParam(maxPeakwidth = 80)
+rt_widths <- unname(pks[, "rtmax"] - pks[, "rtmin"])
+# Compute 75th percentile and multiply by 3
+peakwidth <- quantile(rt_widths, 0.75) * 3
+cpp <- CleanPeaksParam(maxPeakwidth = peakwidth)
+
 ftms <- refineChromPeaks(ftms, cpp)
 ```
 
@@ -342,6 +346,17 @@ head(featureValues(ftms))
 save(ftms, file = file.path(pth, "data", "ftms_fill_filtergauss.RData"))
 
 ```
+
+
+```{r}
+tol <- 1e-6
+featureDefinitions(ftms)[
+  !is.na(featureDefinitions(ftms)$mzmed) &
+  featureDefinitions(ftms)$mzmed > 137.023 &
+  featureDefinitions(ftms)$mzmed < 137.025, ]
+
+```
+
 
 
 ```{r}

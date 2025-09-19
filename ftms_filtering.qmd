@@ -375,6 +375,19 @@ Now we save the resulting ftms spectra object to a local directory.
 save(ftms_one_tree, file = file.path(pth, "data", "ftms_unique_tree.RData"))
 ```
 
+
+```{r}
+spectraData(ftms_one_tree)
+```
+
+
+```{r}
+spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT0066", ]
+
+```
+
+
+
 # Session information
 
 ```{r}
