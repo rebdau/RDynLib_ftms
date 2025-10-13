@@ -52,6 +52,7 @@ with the sample and file information.
 In the following code, *\<my.workdir\>* is the working directory:
 
 ```{r}
+setwd("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms")
 pth <- getwd()
 pth
 ```
@@ -62,7 +63,7 @@ now we import our dataset
 sample_data_ftms <- read_xlsx(
     file.path(pth, "data/sample_data/ftms_data_files.xlsx")) |>
     as.data.frame()
-MZML_PATH <- file.path(pth,"data","mzML")
+MZML_PATH <- file.path(pth,"data","mzML_cent1")
 ftms <- readMsExperiment(file.path(MZML_PATH, sample_data_ftms$data_file),
                          sampleData = sample_data_ftms)
 ftms
@@ -708,7 +709,7 @@ head(featureValues(ftms))
 
 ```{r}
 #' Save the result object
-save(ftms, file = file.path(pth, "data", "ftms_new_settings.RData"))
+save(ftms, file = file.path(pth, "data", "ftms.RData"))
 ```
 
 
@@ -753,36 +754,8 @@ grid()
 dev.off()
 ```
 
-## Feature matrix
-
-Now we will create the feature matrix of this data.
-
-```{r}
-corrected_features <- featureDefinitions(ftms)
-#here we add a new column called featue in this format "MxTy" with:
-#x: mzmed and y: rtmed of each feature
-
-final_feature_matrix <- data.frame(
- `rt(min)` = corrected_features$rtmed / 60,
-  mzmed = corrected_features$mzmed,
-  feature_name = paste0(
-    "M", round(corrected_features$mzmed, 0),
-    "T", round(corrected_features$rtmed, 0)
-  )
-)
 
 
-```
-
-Now let's print the head of the resulting feature matrix
-
-```{r}
-head(final_feature_matrix)
-```
-
-```{r}
-nrow(final_feature_matrix)
-```
 
 # Session information
 
