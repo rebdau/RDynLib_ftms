@@ -34,16 +34,34 @@ pth <- getwd()
 pth
 ```
 
-First we load the `Spectra` ftms_one_tree object with one representative tree per
-feature.
+First we load the `Spectra` ftms_one_tree object with one representative
+tree per feature.
 
 ```{r}
-load(file.path(pth, "data", "ftms_unique_tree.RData"))
+load(file.path(pth, "data", "ftms_one_tree.RData"))
 class(ftms_one_tree)
 ```
+
+```{r}
+library(Spectra)
+
+# Extract spectraData
+sd <- spectraData(ftms_one_tree)
+
+# Count unique features per MS level
+table(sd$msLevel)  # total spectra per MS level
+
+# Count unique feature IDs per MS level
+unique_features_ms <- tapply(sd$feature_id, sd$msLevel, function(x) length(unique(x)))
+unique_features_ms
+
+```
+
 ## Preprocessing: round mz and remove duplicates
+
 Next we round `mz` values to the first integer using `round_perl()`
-function and keep only the most intense peak if rounding results in duplicated mz.
+function and keep only the most intense peak if rounding results in
+duplicated mz.
 
 ```{r}
 round_perl <- function(number) {
@@ -69,9 +87,11 @@ ftms_one_tree <- addProcessing(ftms_one_tree, peaks_round_mz)
 
 ```
 
-
 ## Combine spectra from the same tree
-Create a function that takes a list of spectra (matrices), sums intensities for identical m/z values across spectra, and returns a merged spectrum.
+
+Create a function that takes a list of spectra (matrices), sums
+intensities for identical m/z values across spectra, and returns a
+merged spectrum.
 
 ```{r}
 #'Combine spectra across a tree
@@ -85,7 +105,6 @@ combine_spectra <- function(spectra_list) {
     as.matrix()
 }
 ```
-
 
 ## Create assembled spectra object
 
@@ -157,74 +176,13 @@ ftms_assembled <- create_assembled_spectra(ftms_one_tree)
 spectraData(ftms_assembled)
 ```
 
-the `spectraData()` contains 511 rows which correspond to the number of
-unique trees in the global object.
-
-example for duplicated peaks in different MS levels of a tree, first we
-print the `spectraData()` and `peaksData()` of the 1813 tree before
-assembling
-
 ```{r}
-#spectraData
-spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$MSntreeID == 1072,]
-
-#peaksData
-idx <- which(spectraData(ftms_one_tree)$MSntreeID == 1072)
-lapply(peaksData(ftms_one_tree)[idx], head) 
+peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$MSntreeID == 1788]
 ```
 
-This tree has 4 MS levels (1 MS2, 2 MS3, 1 MS4). One MS3 peak has the
-same m/z as the MS2 peak.
-
-Now we print the `spectraData()` and `peaksData()` of the 1813 tree
-after assembling
-
 ```{r}
-#spectraData
-spectraData(ftms_assembled)[spectraData(ftms_assembled)$MSntreeID == 1072, ]
-
-#peaksData
-idx <- which(spectraData(ftms_assembled)$MSntreeID == 1072)
-lapply(peaksData(ftms_assembled)[idx], head)
+peaksData(ftms_assembled)[spectraData(ftms_assembled)$MSntreeID == 1788]
 ```
-
-The `spectraData()` of this tree after assembling contains only the MS2
-`spectraData()`, as the other levels were dropped. Moreover, the
-assembled `peaksData()` of this tree contains 4 pairs of (mz, intensity)
-instead of 5 in `ftms_one_tree`, because the m/z of the MS3 level is
-equal to that of the MS4 level; as a result, they were combined into one
-by summing their intensities.
-
-Other example for duplicated peaks in the same MS level of a tree
-
-```{r}
-#spectraData
-spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$MSntreeID == 483,]
-
-#peaksData
-idx <- which(spectraData(ftms_one_tree)$MSntreeID == 483)
-lapply(peaksData(ftms_one_tree)[idx], head) 
-```
-
-This tree has 4 MS levels (1 MS2, 2 MS3, 1 MS4). 2 MS3 peaks has the
-same m/z .
-
-Now we print the `spectraData()` and `peaksData()` of the 483 tree after
-assembling
-
-```{r}
-#spectraData
-spectraData(ftms_assembled)[spectraData(ftms_assembled)$MSntreeID == 483, ]
-
-#peaksData
-idx <- which(spectraData(ftms_assembled)$MSntreeID == 483)
-lapply(peaksData(ftms_assembled)[idx], head)
-```
-
-so the results shows that for the duplicated mz in both MS3 levels of
-this tree, the algorithm keep just one and sum their intensities.
-
-Saving the result to a `RData` object
 
 ```{r}
 save(ftms_assembled, file = file.path(pth, "data", "ftms_assembled.RData"))
