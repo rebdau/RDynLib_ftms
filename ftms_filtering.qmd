@@ -40,9 +40,29 @@ First we load the `XcmsExperiment` ftms object with the preprocessing
 results.
 
 ```{r}
-load(file.path(pth, "data", "ftms_fill_filtergauss.RData"))
+load(file.path(pth, "data", "ftms.RData"))
 class(ftms)
 ```
+
+
+
+```{r}
+ftms
+library(Spectra)
+
+sp <- spectra(ftms)
+
+sp_target <- spectraData(sp)[ spectraData(sp)$scanIndex == 3123 &
+                  spectraData(sp)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R4.mzML",] 
+sp_target
+```
+
+```{r}
+peaksData(sp)[spectraData(sp)$scanIndex == 3076 &
+                  spectraData(sp)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R2.mzML",][[1,]]
+```
+
+
 
 Next, we use `xcms::featureSpectra()` to extract all MS2 spectra for
 each feature from `ftms` object.
@@ -59,6 +79,36 @@ ms2 <- featureSpectra(dropFilledChromPeaks(ftms), msLevel = 2, skipFilled = TRUE
 msLevel(ms2) |>
   table()
 ```
+
+```{r}
+ms2_S1R4 <- spectraData(ms2)[ spectraData(ms2)$scanIndex == 2742 &
+                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S9R5.mzML",]
+ms2_S1R4
+```
+
+
+```{r}
+peaksData(ms2)[spectraData(ms2)$scanIndex == 2742 &
+                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S9R5.mzML",][[1,]]
+
+```
+
+```{r}
+FT5341 <- spectraData(ms2)[ spectraData(ms2)$feature_id == "FT5341",]
+
+FT5341
+```
+
+
+
+```{r}
+ms2_F <- spectraData(ms2)[ spectraData(ms2)$feature_id == "FT4158" &
+                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R4.mzML",]
+ms2_F
+```
+
+
+
 
 ```{r}
 spectraData(ms2)
@@ -372,7 +422,24 @@ have for each feature one representative tree.
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "ftms_unique_tree.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
+```
+
+```{r}
+load("data/ftms_one_tree.RData")
+```
+
+```{r}
+tst <- spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5291",]
+tst$dataOrigin
+```
+
+```{r}
+peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5291" & spectraData(ftms_one_tree)$msLevel == 2,][[1,]]
+```
+```{r}
+peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$scanIndex == "FT5341" &
+                  spectraData(ftms_one_tree)$msLevel == 2,][[1,]]
 ```
 
 
