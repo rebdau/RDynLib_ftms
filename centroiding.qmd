@@ -126,10 +126,10 @@ all.equal(a$scanIndex, b$scanIndex)
 
 ```
 
-```{}
+```         
 ```
 
-```{}
+```         
 ```
 
 # Questions and notes
