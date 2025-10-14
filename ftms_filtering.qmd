@@ -466,10 +466,20 @@ This looks like a really good selection !
 # Add additional MS3 and MS4 spectra, with different precursorMz, to the selected trees
 
 Here, the purpose is to add, from the "strong" spectral trees with MS2
-precursorMz in top 75 %, MS3 spectra with different MS2 precursorMz, and
-MS4 spectra with different MS3 or MS4 precursorMz, to the selected
-`ftms_msn_tree_best`. I would select again based on peakCOunts and, if
-ties, precursorIntensity.
+precursor intensity in top 75 %, MS3 spectra with different MS2 precursorMz, and MS4 spectra with different MS3 or MS4 precursorMz, to the selected
+`ftms_msn_tree_best`.
+Create new integer variable to group spectra from different authentic MSn trees into merged MSn trees: `ftms_msn_tree_best$MergedMSntreeID`
+
+## MS3-MS4 spectra from other MS2 precursor
+Add to MSntrees of features in `ftms_msn_tree_best`, MS3 spectra, from the 75% "strong" trees `sd_filtered`, belonging to same feature but having different `round(precurosrMz)` :
+Select longest tree (meaning MS3 with depending MS4 in the same MSntree_id)
+from these, select highest total peakCounts
+if ties, select highest precursor Intensity of MS3 spectrum
+
+## MS4 spectra from other `round(`precursor_mz_MS2)` 
+
+## MS4 spectra from same `round(`precursor_mz_MS2)`, but different `round(precursorMz)`.
+
 
 after selecting one representative tree per feature we have now: MS2 :
 `r ta[1]`, MS3 : `r ta[2]`, and MS4 : `r ta[3]`.
