@@ -52,17 +52,8 @@ library(Spectra)
 
 sp <- spectra(ftms)
 
-sp_target <- spectraData(sp)[ spectraData(sp)$scanIndex == 3123 &
-                  spectraData(sp)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R4.mzML",] 
-sp_target
 ```
-
-```{r}
-peaksData(sp)[spectraData(sp)$scanIndex == 3076 &
-                  spectraData(sp)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R2.mzML",][[1,]]
-```
-
-
+# Associate MS2 spectra to features
 
 Next, we use `xcms::featureSpectra()` to extract all MS2 spectra for
 each feature from `ftms` object.
@@ -80,39 +71,8 @@ msLevel(ms2) |>
   table()
 ```
 
-```{r}
-ms2_S1R4 <- spectraData(ms2)[ spectraData(ms2)$scanIndex == 2742 &
-                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S9R5.mzML",]
-ms2_S1R4
-```
 
 
-```{r}
-peaksData(ms2)[spectraData(ms2)$scanIndex == 2742 &
-                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S9R5.mzML",][[1,]]
-
-```
-
-```{r}
-FT5341 <- spectraData(ms2)[ spectraData(ms2)$feature_id == "FT5341",]
-
-FT5341
-```
-
-
-
-```{r}
-ms2_F <- spectraData(ms2)[ spectraData(ms2)$feature_id == "FT4158" &
-                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R4.mzML",]
-ms2_F
-```
-
-
-
-
-```{r}
-spectraData(ms2)
-```
 
 it returns `r length(ms2)` MS level 2 spectra. The total number of features for
 which an MS2 spectrum was identified is:
@@ -197,6 +157,7 @@ ms2_mult <- names(ms2_table)[ms2_table > 1]
 
 Of the `r length(unique(ms2_id))` MS2 spectra, `r length(ms2_mult)` are assigned
 to more than one feature. 
+
 
 # Extract all MS2-MSn spectra associated to features
 
@@ -363,43 +324,86 @@ The number of trees that go up to MS2 level is : `r t[1]`. The number of
 trees that go up to MS3 level is : `r t[2]`. The number of trees that go up to
 MS4 level is : `r t[3]`.
 
-Next we select one most representative tree per feature based on the
-longest one and if we have many, we select one tree with the highest MS2
-precursor intensity
+# Select single best MSn spectral tree per feature
+
+
+Next we select one most representative tree per feature based on (1) the intensity of the precursor, (2) the length of the tree, (3) the total number of peaks in all spectra of the tree, and (4) in rare cases of several trees with maximal number of peaks: break ties based on precursor intensity (max)
+
+## (1) Filter out weak precursor trees (lowest precursor intensity)
+Keep only trees (`vMSntreeID`v) whose `msLevel == 2` spectrum precursor intensity is in the top 75%.
 
 ```{r}
-
-unique_tree_feature <- function(db) {
-  # Store MS2 indices
-  ms2_idx <- which(msLevel(db) == 2)
-
-  # Table of linked MS2 features only
-  feat_ms2 <- data.frame(
-    idx = ms2_idx,
-    feature_id = sapply(db$feature_id[ms2_idx], function(x) x[1]),
-    MSntreeID = db$MSntreeID[ms2_idx],
-    precursorIntensity = db$precursorIntensity[ms2_idx]
-  )
-
-  # for each feature choose the longest tree and the one with the highest
-  #precursorIntensity()  in case of tie
-  selected_tree_ids <- tapply(seq_len(nrow(feat_ms2)), feat_ms2$feature_id, function(i) {
-    #the longest tree
-    tbl <- table(feat_ms2$MSntreeID[i])
-    FTmax <- as.numeric(names(tbl)[tbl == max(tbl)])
-    #the highest precursorIntensity()
-    sub_idx <- i[feat_ms2$MSntreeID[i] %in% FTmax]
-    sub_idx[which.max(feat_ms2$precursorIntensity[sub_idx])]
-  })
-
-  tree_ids_keep <- feat_ms2$MSntreeID[unlist(selected_tree_ids)]
-  db[which(db$MSntreeID %in% tree_ids_keep)]
-}
-
-ftms_one_tree <- unique_tree_feature(ftms_msn_tree)
-
-print (ta <- msLevel(ftms_one_tree) |> table())
+sd <- as.data.frame(spectraData(ftms_msn_tree))
+ms2 <- subset(sd, msLevel == 2)
+threshold <- quantile(ms2$precursorIntensity, 0.25, na.rm = TRUE)
+strong_MSntrees <- unique(ms2$MSntreeID[ms2$precursorIntensity > threshold])
+sd_filtered <- subset(sd, MSntreeID %in% strong_MSntrees)
 ```
+
+
+## (2) Among 75% remaining MSn trees, select the longest tree per feature
+```{r}
+# Get max msLevel per tree
+tree_length <- aggregate(msLevel ~ MSntreeID + feature_id, data = sd_filtered, max)
+
+# Get max depth per feature
+max_len <- aggregate(msLevel ~ feature_id, data = tree_length, max)
+
+# Keep only trees with the maximum length for their feature
+longest_trees <- merge(tree_length, max_len, by = c("feature_id", "msLevel"))
+
+```
+
+
+## (3) select the tree with highest total number of peaks in all levels
+total number of peaks: sum of peaksCount per tree_id in spectraData
+
+```{r}
+tree_peaks <- aggregate(peaksCount ~ MSntreeID, data = sd_filtered, sum)
+
+candidate_trees <- merge(longest_trees, tree_peaks, by = "MSntreeID")
+max_peaks <- aggregate(peaksCount ~ feature_id, data = candidate_trees, max)
+candidate_trees <- merge(candidate_trees, max_peaks, by.x = c("feature_id", "peaksCount"), by.y = c("feature_id", "peaksCount"))
+
+```
+
+## (4) break ties by precursor intensity (highest)
+```{r}
+# Compute maximal precursor intensity of MS2 spectra per tree
+prec_max <- aggregate(precursorIntensity ~ MSntreeID, data = ms2, max)
+candidate_trees <- merge(candidate_trees, prec_max, by = "MSntreeID")
+
+# select the tree with highest precursor intensity per feature
+candidate_trees <- candidate_trees[order(candidate_trees$feature_id, -candidate_trees$precursorIntensity), ]
+best_tree <- candidate_trees[!duplicated(candidate_trees$feature_id), c("feature_id", "MSntreeID")]
+```
+
+## (5) filter Spectra object
+```{r}
+best_MSntreeIDs <- best_tree$MSntreeID
+ftms_msn_tree_best <- ftms_msn_tree[ which(spectraData(ftms_msn_tree)$MSntreeID %in% best_MSntreeIDs) ]
+```
+
+## (6) (Optional) evaluate based on known spectra
+```{r}
+idx <- which(round(ftms_msn_tree_best$precursorMz) == 1333)
+idx
+peaksData(ftms_msn_tree_best)[idx][[1]]
+
+
+idx <- which(round(ftms_msn_tree_best$precursorMz) == 1171)
+idx
+peaksData(ftms_msn_tree_best)[idx][[1]]
+peaksData(ftms_msn_tree_best)[idx][[2]]
+```
+This looks like a really good selection !
+
+# Add additional MS3 and MS4 spectra, with different precursorMz, to the selected trees
+
+Here, the purpose is to add, from the "strong" spectral trees with MS2 precursorMz in top 75 %, MS3 spectra with different MS2 precursorMz, and MS4 spectra with different MS3 or MS4 precursorMz, to the selected `ftms_msn_tree_best`. I would select again based on peakCOunts and, if ties, precursorIntensity.
+
+
+
 
 after selecting one representative tree per feature we have now: MS2 :
 `r ta[1]`, MS3 : `r ta[2]`, and MS4 : `r ta[3]`.
