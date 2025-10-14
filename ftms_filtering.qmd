@@ -266,7 +266,7 @@ assign_msntree_id <- function(x) {
           global_counter <- global_counter + 1
           origin_tree_id[i] <- global_counter
         }
-        ## 🔹 NEW: MS2 spectra have no MS2-level precursor
+        ## MS2 spectra have no MS2-level precursor
         origin_precursor_mz_MS2[i] <- NA_real_
 
       } else {
@@ -278,10 +278,10 @@ assign_msntree_id <- function(x) {
 
           ## assign precursorMz.MS2 depending on depth
           if (level == 3) {
-            ## MS3: parent is MS2 → use parent’s precursorMz
+            ## MS3: parent is MS2; use parent’s precursorMz
             origin_precursor_mz_MS2[i] <- origin_precursor_mz[parent_pos]
           } else if (level == 4) {
-            ## MS4: grandparent is MS2 → fetch its precursorMz
+            ## MS4: grandparent is MS2; fetch its precursorMz
             grandparent_scan <- origin_prec_scan_num[parent_pos]
             grandparent_pos <- scan_idx_map[as.character(grandparent_scan)]
             if (length(grandparent_pos) == 1 && origin_ms_level[grandparent_pos] == 2)
@@ -316,6 +316,8 @@ assign_msntree_id <- function(x) {
   tree_id <- tree_id[order(o)]
   ## reorder new variable to match
   precursor_mz_MS2 <- precursor_mz_MS2[order(o)]
+  
+  x <- x[order(o)]
 
   ## add both to Spectra object
   x$MSntreeID <- tree_id
