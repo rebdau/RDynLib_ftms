@@ -24,6 +24,7 @@ library(readxl)
 library(dplyr)
 library(readr)
 library(purrr)
+
 ```
 
 We use the *Spectra* package, in particular its `pickPeaks()` function to perform the centroiding. We perform the analysis separately for each original mzXML file and export the data directly to a file in mzML format.
@@ -33,7 +34,7 @@ We use the *Spectra* package, in particular its `pickPeaks()` function to perfor
 #' and the path where we want to export the centroided mzML data.
 pth <- getwd()
 MZXML_PATH <- file.path(pth,"data","mzXML")
-MZML_PATH <- file.path(pth,"data","mzML")
+MZML_PATH <- file.path(pth,"data","mzML_cent1")
 
 #' List all files
 fls <- dir(MZXML_PATH, full.name = TRUE)
@@ -57,7 +58,7 @@ In profile-mode data, each mass peak is represented by a distribution of signal.
 
 ```{r}
 
-a_c <- pickPeaks(a, halfWindowSize = 10L, k = 2L, threshold = 0.33)
+a_c <-Spectra::pickPeaks(a, halfWindowSize = 10L, k = 2L, threshold = 0.33)
 
 par(mfrow = c(2, 2))
 plotSpectra(a)
@@ -93,83 +94,42 @@ We proceed now and centroid all data files with the settings above.
 if (!dir.exists(MZML_PATH))
     dir.create(MZML_PATH, recursive = TRUE)
 
-for (f in fls) {
-    a <- Spectra(f)
-    fn <- file.path(MZML_PATH, sub("mzXML$", "mzML", basename(f)))
-    a <- pickPeaks(a, halfWindowSize = 10L, k = 2L, threshold = 0.33)
-    export(a, backend = MsBackendMzR(), file = fn,
-           format = "mzML", copy = TRUE)
-}
+library(BiocParallel)
+bpparam <- MulticoreParam(workers = 4)  
+
+bplapply(fls, function(f) {
+  message("Processing: ", basename(f))
+  a <- Spectra(f)
+  a <- setBackend(a, MsBackendMemory())
+  ms1 <- filterMsLevel(a, 1L)
+  msx <- filterMsLevel(a, 2:4)
+  ms1_cent <- Spectra::pickPeaks(ms1, halfWindowSize = 10L, k = 2L, threshold = 0.33)
+  ms1_cent <- applyProcessing(ms1_cent)
+  merged <- concatenateSpectra(list(ms1_cent, msx))
+  merged <- merged[order(rtime(merged))]
+  fn <- file.path(MZML_PATH, sub("\\.mzXML$", ".mzML", basename(f)))
+  export(merged, backend = MsBackendMzR(), file = fn, format = "mzML", copy = FALSE)
+}, BPPARAM = bpparam)
+
 
 b <- Spectra(fn)
+msLevel(b) |> table()
 all(centroided(b))
+
+
 all.equal(a$acquisitionNum, b$acquisitionNum)
 all.equal(a$precScanNum, b$precScanNum)
 all.equal(a$scanIndex, b$scanIndex)
 ```
 
 ```{r}
-sample_data_ftms <- read_xlsx(file.path(pth,"data","sample_data","ftms_data_files.xlsx")) |>
-    as.data.frame()
 
-ftms <- readMsExperiment(file.path(MZML_PATH, sample_data_ftms$data_file),
-                         sampleData = sample_data_ftms)
-ftms
 ```
 
-```{r}
-s <- spectra(ftms)
-spectraData(s)
+```         
 ```
 
-```{r}
-# Create the read_csv_safely() function to safely read a delimited text file (CSV or TSV) into a data frame.
-# The function tries to use readr::read_delim() for speed and robustness,
-# and falls back to base::read.csv() if an error occurs.
-read_csv_safely <- function(file_path, sep = "\t", quote = "\"", header = TRUE, col_types = NULL) {
-  if (!file.exists(file_path)) {
-    stop(paste("The file does not exist:", file_path))
-  }
-  
-  tryCatch({
-    data <- read_delim(file_path, delim = sep, quote = quote, col_names = header, col_types = col_types)
-    return(as.data.frame(data))  
-  }, error = function(e) {
-    message("Error while reading with read_delim: ", e$message)
-    message("Trying read.csv...")
-    data <- read.csv(file_path, sep = sep, quote = quote, header = header, stringsAsFactors = FALSE)
-    return(as.data.frame(data))  
-  })
-}
-
-
-ms2_spectra_path <- "C:/Users/amentag/Desktop/these/Ahlam/these/RDynLib/database_QTOF_neg/CSV/MS2spectra.csv"
-col_types_spectra <- cols(
-  MS2PEAKLIST = col_character(),
-  MS2INTENSITYLIST = col_character()
-)
-
-ms2<- read_csv_safely(ms2_spectra_path, sep = "\t", col_types = col_types_spectra)
-
-head(ms2)
-```
-
-```{r}
-
-# Convert comma-separated strings into vectors and compare their lengths
-ms2$peaks_count <- sapply(strsplit(ms2$MS2PEAKLIST, ","), length)
-ms2$intensities_count <- sapply(strsplit(ms2$MS2INTENSITYLIST, ","), length)
-
-# Create a logical column indicating if counts match
-ms2$counts_match <- ms2$peaks_count == ms2$intensities_count
-
-# View summary
-table(ms2$counts_match)
-
-# Optionally, display mismatched rows
-ms2_mismatched <- ms2 %>% filter(!counts_match)
-head(ms2_mismatched)
-
+```         
 ```
 
 # Questions and notes
