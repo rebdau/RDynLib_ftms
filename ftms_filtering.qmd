@@ -225,7 +225,6 @@ The function `assign_msntree_id()` will:
     -   **`precursorMz.MS2`** — MS2-level precursor m/z propagated to
         MS3/MS4 (and beyond), `NA` for MS2
         
-!!!!!!!!!!!!!TODO: fix function, precursorMz.MS2 is wrong; needs to be == precursorMz if msLevel == 3
 ```{r}
 assign_msntree_id <- function(x) {
   ## Order x by MS level: ensures we first assign an ID to the MS2.
@@ -272,34 +271,24 @@ assign_msntree_id <- function(x) {
       } else {
         ## Assign ID of the related precursor ID
         parent_scan <- origin_prec_scan_num[i]
-        parent_pos <- scan_idx_map[as.character(parent_scan)]
+                parent_pos <- which(origin_scan_index == parent_scan)
         if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1)) {
           origin_tree_id[i] <- origin_tree_id[parent_pos]
 
           ## assign precursorMz.MS2 depending on depth
           if (level == 3) {
-            ## MS3: parent is MS2; use parent’s precursorMz
-            origin_precursor_mz_MS2[i] <- origin_precursor_mz[parent_pos]
-          } else if (level == 4) {
-            ## MS4: grandparent is MS2; fetch its precursorMz
-            grandparent_scan <- origin_prec_scan_num[parent_pos]
-            grandparent_pos <- scan_idx_map[as.character(grandparent_scan)]
-            if (length(grandparent_pos) == 1 && origin_ms_level[grandparent_pos] == 2)
-              origin_precursor_mz_MS2[i] <- origin_precursor_mz[grandparent_pos]
-            else
-              origin_precursor_mz_MS2[i] <- NA_real_
+            origin_precursor_mz_MS2[i] <- origin_precursor_mz[i]
           } else {
-            ## Optional: handle MS5+ recursively (rare)
             ancestor_pos <- parent_pos
-            while (ancestor_pos > 0 &&
-                   origin_ms_level[ancestor_pos] > 2) {
-              parent_scan <- origin_prec_scan_num[ancestor_pos]
-              ancestor_pos <- scan_idx_map[as.character(parent_scan)]
+            while (!is.na(ancestor_pos) && origin_ms_level[ancestor_pos] > 3) {
+              ancestor_scan <- origin_prec_scan_num[ancestor_pos]
+              ancestor_pos <- scan_idx_map[as.character(ancestor_scan)]
             }
-            if (!is.na(ancestor_pos) && origin_ms_level[ancestor_pos] == 2)
+            if (!is.na(ancestor_pos) && origin_ms_level[ancestor_pos] == 3) {
               origin_precursor_mz_MS2[i] <- origin_precursor_mz[ancestor_pos]
-            else
+            } else {
               origin_precursor_mz_MS2[i] <- NA_real_
+            }
           }
 
         } else {
