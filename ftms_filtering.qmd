@@ -393,6 +393,13 @@ ms2 <- subset(sd, msLevel == 2)
 threshold <- quantile(ms2$precursorIntensity, 0.25, na.rm = TRUE)
 strong_MSntrees <- unique(ms2$MSntreeID[ms2$precursorIntensity > threshold])
 sd_filtered <- subset(sd, MSntreeID %in% strong_MSntrees)
+
+length(unique(sd_filtered$feature_id))
+length(unique(sd$feature_id)) 
+removed.features <- length(unique(sd$feature_id)) - length(unique(sd_filtered$feature_id))
+message(removed.features, " features were removed after selecting only spectra with top 75% precursor intensity.")
+message(length(unique(sd_filtered$feature_id))," of the ", length(unique(sd$feature_id)), " features remain.")
+
 ```
 
 ## (2) Among 75% remaining MSn trees, select the longest tree per feature
@@ -487,6 +494,13 @@ peaksData(ftms_msn_tree_best)[idx][[2]]
 ```
 
 This looks like a really good selection !
+## (6) Save
+Now we save the resulting ftms spectra object to a local directory.
+
+```{r}
+ftms_one_tree <- ftms_msn_tree_best
+save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
+```
 
 # Add additional MS3 and MS4 spectra, with different precursorMz, to the selected trees
 
@@ -619,15 +633,13 @@ merged <- merged %>%
   mutate(MergedMSntreeID = as.integer(factor(feature_id)))
 
 # Extract and update the corresponding spectra from the original MSn tree object
-mergeKey <- paste(merged$dataOrigin, merged$scanIndex, sep = "_")
+merged_spectra <- ftms_msn_tree[
+  paste(spectraData(ftms_msn_tree)$dataOrigin,
+        spectraData(ftms_msn_tree)$scanIndex, sep = "_") %in%
+    paste(merged$dataOrigin, merged$scanIndex, sep = "_")
+]
 
-original_key <- paste(spectraData(ftms_msn_tree)$dataOrigin,
-                      spectraData(ftms_msn_tree)$scanIndex,
-                      sep = "_")
-
-merged_spectra <- ftms_msn_tree[original_key %in% mergeKey]
-merged <- S4Vectors::DataFrame(merged)
-spectraData(merged_spectra) <- merged
+spectraData(merged_spectra) <- S4Vectors::DataFrame(merged)
 
 ```
 ### Check for duplicates and post-processing if duplicates found
@@ -820,14 +832,12 @@ merged_df <- merged_df %>%
   mutate(MergedMSntreeID = as.integer(factor(feature_id)))
 
 # Update Spectra object
-# Locate spectra in original Spectra object
-original_sd <- as.data.frame(spectraData(ftms_msn_tree))  
-original_key <- paste(original_sd$dataOrigin, original_sd$scanIndex, sep = "_")
+merged_spectra <- ftms_msn_tree[
+  paste(spectraData(ftms_msn_tree)$dataOrigin,
+        spectraData(ftms_msn_tree)$scanIndex, sep = "_") %in%
+    c(mergeKey_existing, mergeKey_newms4)
+]
 
-# Subset original spectra that match the merged table
-merged_spectra <- ftms_msn_tree[original_key %in% c(mergeKey_existing, mergeKey_newms4)]
-
-# Replace spectraData with updated merged table
 spectraData(merged_spectra) <- S4Vectors::DataFrame(merged_df)
 
 ```
@@ -1010,10 +1020,12 @@ merged_df <- merged_df %>%
   mutate(MergedMSntreeID = as.integer(factor(feature_id)))
 
 # Update Spectra object
-original_sd <- as.data.frame(spectraData(ftms_msn_tree))
-original_key <- paste(original_sd$dataOrigin, original_sd$scanIndex, sep = "_")
+merged_spectra <- ftms_msn_tree[
+  paste(spectraData(ftms_msn_tree)$dataOrigin,
+        spectraData(ftms_msn_tree)$scanIndex, sep = "_") %in%
+    c(mergeKey_existing, mergeKey_newms4)
+]
 
-merged_spectra <- ftms_msn_tree[original_key %in% c(mergeKey_existing, mergeKey_newms4)]
 spectraData(merged_spectra) <- S4Vectors::DataFrame(merged_df)
 
 ```
@@ -1105,15 +1117,16 @@ representative tree.
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(merged_spectra, file = file.path(pth, "data", "ftms_one_tree.RData"))
+ftms_one_merged_tree <- merged_spectra
+save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.RData"))
 ```
 
 ```{r}
-load("data/ftms_one_tree.RData")
+load("data/ftms_one_merged_tree.RData")
 ```
 
 ```{r}
-tst <- spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5291",]
+tst <- spectraData(ftms_one_merged_tree)[spectraData(ftms_one_merged_tree)$feature_id == "FT5291",]
 tst$dataOrigin
 ```
 
