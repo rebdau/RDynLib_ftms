@@ -587,6 +587,130 @@ spectraData(merged_spectra) <- merged
 
 ## MS4 spectra from other `round(`precursor_mz_MS2)` 
 
+Identify “new” MS4 spectra in sd_filtered that aren’t already in merged trees, but are connected to existing MS3 spectra via matching precursor m/z values, and also have precursor m/z matching actual fragment peaks of those MS3 spectra.
+
+###Create set of candidate new MS4 spectra
+```{r}
+# Prepare subsets of the merged spectra
+merged_sd <- as.data.frame(spectraData(merged_spectra))
+
+ms3_merged <- merged_sd %>% filter(msLevel == 3)
+ms4_merged <- merged_sd %>% filter(msLevel == 4)
+
+# Select candidate MS4 spectra from sd_filtered :
+# their MS3 parent spectrum exists in merged_spectra (to verify based on presence of their precursorMz.MS2 in ms3_merged$precursorMz)
+# precursorMz.MS2 is not already present among MS4 spectra of merged_spectra
+ms4_candidates <- sd_filtered %>%
+  filter(
+    msLevel == 4,
+    !(precursorMz.MS2 %in% ms4_merged$precursorMz.MS2),
+    precursorMz.MS2 %in% ms3_merged$precursorMz
+  )
+```
+
+### Retain only cadidate MS4 spectra for which the precursor m/z (precursorMz) is present among the peaks of its corresponding MS3 parent spectrum in the merged_spectra object.
+```{r}
+# Identify MS3 spectra in best or merged trees, that could be parents of the candidate new MS4 spectra
+parent_ms3_precursors <- unique(ms4_candidates$precursorMz.MS2)
+ms3_parents_sd <- ms3_merged %>%
+  filter(precursorMz %in% parent_ms3_precursors)
+ms3_parents <- paste(ms3_parents_sd$dataOrigin,ms3_parents_sd$scanIndex)
+
+# Extract peaksData from merged_spectra only for relevant MS3 spectra
+pd <- peaksData(merged_spectra)
+sd <- spectraData(merged_spectra)
+
+spectra_id <- paste(sd$dataOrigin,sd$scanIndex)
+
+ms3_indices <- which(spectra_id %in% ms3_parents)
+peaks.ms3parents.list <- as.list(pd[ms3_indices,])
+
+### filter  ms4_candidates so that each candidate MS4 spectrum is retained only if its precursor m/z (precursorMz) is present among the peaks of its corresponding MS3 parent spectrum.
+
+# Build lookup of rounded parent precursorMz → rounded peaks
+parent_lookup <- lapply(peaks.ms3parents.list, function(x) round(x[, 1]))
+names(parent_lookup) <- as.character(round(ms3_parents_sd$precursorMz))
+
+# Round MS4 precursor columns for matching
+ms4_candidates <- ms4_candidates %>%
+  mutate(
+    precursorMz_round = round(precursorMz),
+    precursorMz_MS2_round = round(precursorMz.MS2)
+  )
+
+# For each candidate, check if its rounded precursor is in the parent’s rounded peaks
+keep_idx <- logical(nrow(ms4_candidates))
+
+for (i in seq_len(nrow(ms4_candidates))) {
+  parent_key <- as.character(ms4_candidates$precursorMz_MS2_round[i])
+  if (parent_key %in% names(parent_lookup)) {
+    keep_idx[i] <- ms4_candidates$precursorMz_round[i] %in% parent_lookup[[parent_key]]
+  } else {
+    keep_idx[i] <- FALSE
+  }
+}
+
+# Filter retained candidates
+ms4_candidates_filtered <- ms4_candidates[keep_idx, ]
+```
+
+### Select MS4 candidate spectrum with highest number of peaks
+```{r}
+# Create composite key precMS2.precMS3
+ms4_candidates_filtered <- ms4_candidates_filtered %>%
+  mutate(
+    precMS2.precMS3 = paste0(
+      "precMS2_", round(precursorMz.MS2),
+      "_precMS3_", round(precursorMz)
+    )
+  )
+
+# Keep only MS4 spectrum with the highest number of peaks per unique precMS2.precMS3
+newms4_best <- ms4_candidates_filtered %>%
+  group_by(precMS2.precMS3) %>%
+  slice_max(order_by = peaksCount, n = 1, with_ties = FALSE) %>%
+  ungroup()
+```
+
+### Append new MS4 spectra (newms4_best) to merged MSntree dataset
+```{r}
+# Prepare metadata for merging
+sd_merged <- as.data.frame(spectraData(merged_spectra))
+
+# Round precursor m/z for matching consistency
+sd_merged$precMzRound <- round(sd_merged$precursorMz)
+newms4_best$precMzRound <- round(newms4_best$precursorMz)
+
+# Create merge keys (for later extraction from original dataset)
+mergeKey_existing <- paste(sd_merged$dataOrigin, sd_merged$scanIndex, sep = "_")
+mergeKey_newms4   <- paste(newms4_best$dataOrigin, newms4_best$scanIndex, sep = "_")
+
+# Combine metadata tables
+common_cols <- intersect(names(sd_merged), names(newms4_best))
+
+merged_df <- bind_rows(
+  sd_merged[, common_cols],
+  newms4_best[, common_cols]
+)
+
+# Assign new merged tree IDs
+merged_df <- merged_df %>%
+  mutate(MergedMSntreeID = as.integer(factor(feature_id)))
+
+# Update Spectra object
+# Locate spectra in original Spectra object
+original_sd <- as.data.frame(spectraData(ftms_msn_tree))  
+original_key <- paste(original_sd$dataOrigin, original_sd$scanIndex, sep = "_")
+
+# Subset original spectra that match the merged table
+merged_spectra <- ftms_msn_tree[original_key %in% c(mergeKey_existing, mergeKey_newms4)]
+
+# Replace spectraData with updated merged table
+spectraData(merged_spectra) <- S4Vectors::DataFrame(merged_df)
+
+```
+
+
 ## MS4 spectra from same `round(`precursor_mz_MS2)`, but different `round(precursorMz)`.
 
 
