@@ -81,20 +81,20 @@ msLevel(ms2) |>
 ```
 
 ```{r}
-ms2_S1R4 <- spectraData(ms2)[ spectraData(ms2)$scanIndex == 2742 &
-                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S9R5.mzML",]
+ms2_S1R4 <- spectraData(ms2)[ spectraData(ms2)$scanIndex == 2864 &
+                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R4.mzML",]
 ms2_S1R4
 ```
 
 
 ```{r}
-peaksData(ms2)[spectraData(ms2)$scanIndex == 2742 &
-                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S9R5.mzML",][[1,]]
+peaksData(ms2)[spectraData(ms2)$scanIndex == 4356 &
+                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R3.mzML",][[1,]]
 
 ```
 
 ```{r}
-FT5341 <- spectraData(ms2)[ spectraData(ms2)$feature_id == "FT5341",]
+FT5341 <- spectraData(ms2)[ spectraData(ms2)$feature_id == "FT5490",]
 
 FT5341
 ```
@@ -198,6 +198,31 @@ ms2_mult <- names(ms2_table)[ms2_table > 1]
 Of the `r length(unique(ms2_id))` MS2 spectra, `r length(ms2_mult)` are assigned
 to more than one feature. 
 
+#Select the 25% of spectra with the highest peaks number for each feature
+
+```{r}
+
+Highest_peaks_nb <- function(ms2, percentage = 34) {
+  n_peaks <- lengths(peaksData(ms2))
+  fid <- spectraData(ms2)$feature_id
+  
+  keep_idx <- unlist(lapply(split(seq_along(ms2), fid), function(idx) {
+    n <- ceiling(length(idx) * percentage / 100)
+    idx[order(n_peaks[idx], decreasing = TRUE)[seq_len(n)]]
+  }))
+  
+  ms2[keep_idx]
+}
+
+
+ms2_H <- Highest_peaks_nb(ms2, 34)
+
+spectraData(ms2_H)[ spectraData(ms2_H)$feature_id == "FT5229",]
+```
+
+
+
+
 # Extract all MS2-MSn spectra associated to features
 
 We next define a function to extract the full MSn tree for features.
@@ -237,7 +262,7 @@ ftms_all_levels <- function(ftms, ms2) {
     do.call(c, res)
 }
 
-ftms_msn_tree <- ftms_all_levels(ftms,ms2)
+ftms_msn_tree <- ftms_all_levels(ftms,ms2_H)
 
 table(msLevel(ftms_msn_tree))
 ```
@@ -422,7 +447,7 @@ have for each feature one representative tree.
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
-save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
+save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree_test.RData"))
 ```
 
 ```{r}
@@ -430,12 +455,12 @@ load("data/ftms_one_tree.RData")
 ```
 
 ```{r}
-tst <- spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5291",]
-tst$dataOrigin
+tst <- spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5490",]
+tst
 ```
 
 ```{r}
-peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5291" & spectraData(ftms_one_tree)$msLevel == 2,][[1,]]
+peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5490" & spectraData(ftms_one_tree)$msLevel == 2,][[1,]]
 ```
 ```{r}
 peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$scanIndex == "FT5341" &
@@ -449,7 +474,7 @@ spectraData(ftms_one_tree)
 
 
 ```{r}
-spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT0066", ]
+spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT4553", ]
 
 ```
 
