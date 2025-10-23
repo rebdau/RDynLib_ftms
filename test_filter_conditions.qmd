@@ -1,0 +1,113 @@
+---
+title: "Untitled"
+format: html
+server: shiny
+---
+
+## Shiny Documents
+
+This Quarto document is made interactive using Shiny. Interactive documents allow readers to modify parameters and see the results immediately. Learn more about Shiny interactive documents at <https://quarto.org/docs/interactive/shiny/>.
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change. This demonstrates how a standard R plot can be made interactive:
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(xcms)
+library(MsExperiment)
+library(Spectra)
+library(readxl)
+library(IRanges)
+library(S4Vectors)
+register(SerialParam())
+setwd("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms")
+pth <- getwd()
+pth
+```
+
+```{r}
+load(file.path(pth, "data", "ftms.RData"))
+class(ftms)
+```
+
+```{r}
+ftms
+library(Spectra)
+
+sp <- spectra(ftms)
+
+sp_target <- spectraData(sp)[ spectraData(sp)$scanIndex == 2891 &
+                  spectraData(sp)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S9R4.mzML",] 
+sp_target
+```
+
+```{r}
+peaksData(sp)[spectraData(sp)$scanIndex == 2772 &
+                  spectraData(sp)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R4.mzML",][[1,]]
+```
+
+```{r}
+ms2 <- featureSpectra(dropFilledChromPeaks(ftms), msLevel = 2, skipFilled = TRUE)
+
+msLevel(ms2) |>
+  table()
+```
+
+```{r}
+ms2_S1R4 <- spectraData(ms2)[ spectraData(ms2)$scanIndex == 4883 &
+                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R5.mzML",]
+ms2_S1R4
+```
+
+```{r}
+peaksData(ms2)[spectraData(ms2)$scanIndex == 4883 &
+                  spectraData(ms2)$dataOrigin == "C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\mzML_cent1\\S1R5.mzML",][[1,]]
+
+```
+
+```{r}
+FT5341 <- spectraData(ms2)[ spectraData(ms2)$feature_id == "FT5733",]
+
+FT5341
+```
+
+```{r}
+peaksData(ms2)[spectraData(ms2)$scanIndex == 4824 &
+                  spectraData(ms2)$feature_id == "FT5733",][[1,]]
+```
+
+```{r}
+peaksData(ms2)[spectraData(ms2)$scanIndex == 2713 &
+                  spectraData(ms2)$feature_id == "FT5341",][[1,]]
+```
+
+```{r}
+peaksData(ms2)[spectraData(ms2)$scanIndex == 2654 &
+                  spectraData(ms2)$feature_id == "FT5341",][[1,]]
+```
+
+```{r}
+peaksData(ms2)[spectraData(ms2)$scanIndex == 2701 &
+                  spectraData(ms2)$feature_id == "FT5341",][[1,]]
+```
+
+```{r}
+peaksData(ms2)[spectraData(ms2)$scanIndex == 2683 &
+                  spectraData(ms2)$feature_id == "FT5229",][[1,]]
+```
+
+```{r}
+load("C:\\Users\\amentag\\Desktop\\Rcodes\\RDynLib_ftms\\data\\ftms_one_tree_test.RData")
+```
+
+```{r}
+tst <- spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5733",]
+tst
+```
+
+```{r}
+peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$scanIndex == 2683 &
+                  spectraData(ftms_one_tree)$feature_id == "FT5229",][[1,]]
+```
