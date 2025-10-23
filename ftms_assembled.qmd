@@ -38,7 +38,7 @@ First we load the `Spectra` ftms_one_tree object with one representative
 tree per feature.
 
 ```{r}
-load(file.path(pth, "data", "ftms_one_tree.RData"))
+load(file.path(pth, "data", "ftms_one_merged_tree.RData"))
 class(ftms_one_tree)
 ```
 
@@ -46,7 +46,7 @@ class(ftms_one_tree)
 library(Spectra)
 
 # Extract spectraData
-sd <- spectraData(ftms_one_tree)
+sd <- spectraData(ftms_one_merged_tree)
 
 # Count unique features per MS level
 table(sd$msLevel)  # total spectra per MS level
@@ -82,7 +82,7 @@ peaks_round_mz <- function(x, spectrumMsLevel, ...) {
 
 }
 
-ftms_one_tree <- addProcessing(ftms_one_tree, peaks_round_mz)
+ftms_one_merged_tree <- addProcessing(ftms_one_merged_tree, peaks_round_mz)
 
 
 ```
@@ -171,7 +171,7 @@ create_assembled_spectra <- function(ftms) {
 Calling the main function
 
 ```{r}
-ftms_assembled <- create_assembled_spectra(ftms_one_tree)
+ftms_assembled <- create_assembled_spectra(ftms_one_merged_tree)
 
 spectraData(ftms_assembled)
 ```
