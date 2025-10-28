@@ -146,7 +146,8 @@ create_assembled_spectra <- function(ftms) {
       #copy the same mz and intensity (already cleaned)
       df$mz <- list(merged_spec[, "mz"])
       df$intensity <- list(merged_spec[, "intensity"])
-      
+      # Remove rows where msLevel is NA
+      df <- df[!is.na(df$msLevel), , drop = FALSE]
       k <- k + 1
       #'Convert the modified metadata+peaks into a new 
       #'Spectra object and append it to assembled_list
@@ -165,7 +166,6 @@ create_assembled_spectra <- function(ftms) {
 }
 
 
-
 ```
 
 Calling the main function
@@ -173,7 +173,14 @@ Calling the main function
 ```{r}
 ftms_assembled <- create_assembled_spectra(ftms_one_merged_tree)
 
-spectraData(ftms_assembled)
+df <- spectraData(ftms_assembled)
+unique(df$msLevel)
+
+```
+
+```{r}
+df <- spectraData(ftms_assembled)
+df[!is.na(df$msLevel), ]
 ```
 
 ```{r}
