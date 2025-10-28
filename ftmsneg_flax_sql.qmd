@@ -10,7 +10,7 @@ author: "Ahlam Mentag, Johannes Rainer"
 ## Shiny Documents
 
 This Quarto document represents the folowing steps to create a Sql database for
-Qtof Flax data
+FTMS Flax data
 
 ```{r}
 library(Spectra)
