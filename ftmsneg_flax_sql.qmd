@@ -62,7 +62,7 @@ spectraData(ftms_all)
 ```
 
 ```{r}
-con <- dbConnect(RSQLite::SQLite(), "data/Ftms_flax_neg.sqlite")
+con <- dbConnect(RSQLite::SQLite(), "data/ftms_flax_neg.sqlite")
 ```
 
 ```{r}
@@ -110,7 +110,7 @@ dbExecute(con, "
   CREATE TABLE IF NOT EXISTS ms_compound (
     compound_id TEXT PRIMARY KEY,
     expid INTEGER,
-    node_name TEXT,
+    nodename TEXT,
     retention_time REAL,
     mass_measured REAL,
     name TEXT,
@@ -163,7 +163,7 @@ last_expid <- tail(dbReadTable(con, "experiment")$expid, 1)
 ms_compound_df <- data.frame(
   compound_id = as.character(seq(start_id, length.out = n)),
   expid = rep(last_expid, n),
-  node_name = cmp$feature_id,
+  nodename = cmp$feature_id,
   retention_time = cmp$feature_rtmed,
   mass_measured = cmp$feature_mzmed,
   #spectrum.type = cmp$spectrum.type,
@@ -316,7 +316,7 @@ msms_df <- data.frame(
   original_id = getcol("original_id"),
   stringsAsFactors = FALSE
 )
-msms_df$compound_id <- ms_compound_df$compound_id[match(sp$feature_id, ms_compound_df$node_name)]
+msms_df$compound_id <- ms_compound_df$compound_id[match(sp$feature_id, ms_compound_df$nodename)]
 
 # Convert collision_energy to character (NA_character_ si vide msms_df$collision_energy <- as.character(msms_df$collision_energy)
 
@@ -429,7 +429,7 @@ Create featue_matrix table
 ```{r}
 dbExecute(con, "
   CREATE TABLE IF NOT EXISTS feature_matrix (
-    node_name TEXT,
+    nodename TEXT,
     dataOrigin TEXT,
     Value REAL,
     expid INTEGER,
@@ -475,7 +475,7 @@ long_format$expid <- exp_id
 ```
 
 ```{r}
-names(long_format)[names(long_format) == "feature_id"] <- "node_name"
+names(long_format)[names(long_format) == "feature_id"] <- "nodename"
 
 dbWriteTable(con, "feature_matrix", long_format, append = TRUE, row.names = FALSE)
 
@@ -510,6 +510,6 @@ sp <- Spectra(cdb)
 ```
 
 ```{r}
-spectraData(sp, columns = c("msLevel", "compound_id", "node_name", "rtime"))
+spectraData(sp, columns = c("msLevel", "compound_id", "nodename", "rtime", "retention_time"))
 ```
 
