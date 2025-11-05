@@ -46,8 +46,8 @@ class(ftms)
 
 ```{r}
 ftms
-library(Spectra)
 
+#convert the ftms XcmsExperiment object to a spectra object
 sp <- spectra(ftms)
 
 ```
