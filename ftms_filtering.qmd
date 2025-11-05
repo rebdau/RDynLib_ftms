@@ -239,14 +239,14 @@ assign_msntree_id <- function(x) {
   prec_scan_num <- precScanNum(x)
   ms_level <- msLevel(x)
   data_origin <- dataOrigin(x)
-  
+
   ## store precursorMz values
   precursor_mz <- precursorMz(x)
 
   tree_id <- rep(NA_integer_, length(scan_index))
   ## initialize output vector for MS2-level precursor m/z
   precursor_mz_MS2 <- rep(NA_real_, length(scan_index))
-  
+
   global_counter <- 0
 
   for (origin in unique(data_origin)) {
@@ -310,7 +310,7 @@ assign_msntree_id <- function(x) {
   tree_id <- tree_id[order(o)]
   ## reorder new variable to match
   precursor_mz_MS2 <- precursor_mz_MS2[order(o)]
-  
+
   x <- x[order(o)]
 
   ## add both to Spectra object
@@ -395,7 +395,7 @@ strong_MSntrees <- unique(ms2$MSntreeID[ms2$precursorIntensity > threshold])
 sd_filtered <- subset(sd, MSntreeID %in% strong_MSntrees)
 
 length(unique(sd_filtered$feature_id))
-length(unique(sd$feature_id)) 
+length(unique(sd$feature_id))
 removed.features <- length(unique(sd$feature_id)) - length(unique(sd_filtered$feature_id))
 message(removed.features, " features were removed after selecting only spectra with top 75% precursor intensity.")
 message(length(unique(sd_filtered$feature_id))," of the ", length(unique(sd$feature_id)), " features remain.")
@@ -494,7 +494,9 @@ peaksData(ftms_msn_tree_best)[idx][[2]]
 ```
 
 This looks like a really good selection !
+
 ## (6) Save
+
 Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
@@ -535,7 +537,7 @@ and appends any dependent MS4 spectra from the same feature
 # Appends dependent MS4 spectrum row from sd_filtered.
 
 
-  selectbest.ms3ms4 <- function(x) {
+selectbest.ms3ms4 <- function(x) {
   # Filter MS4 if any exist, compute pc, sort, keep top MS3
   top_ms3 <- x %>%
     {
@@ -554,14 +556,14 @@ and appends any dependent MS4 spectra from the same feature
     ms4_row <- sd_filtered %>%
   filter(msLevel == 4, acquisitionNum %in% top_ms3$ms4_acq, feature_id == top_ms3$feature_id)
 combined <- bind_rows(top_ms3, ms4_row)
-    
-    
+
+
   } else {
     combined <- top_ms3
   }
 
   combined
-} 
+}
 ```
 
 ### Prepare merged MSntree dataset
@@ -587,17 +589,17 @@ ms4_spectra <- sd_filtered %>%
 all_additional_ms3 <- list()
 
 for (f in unique(sd_best$feature_id)) {
-  
+
   # Best MSn tree for this feature
   best_tree <- sd_best %>% filter(feature_id == f)
   best_precMz <- unique(best_tree$precMzRound[best_tree$msLevel == 3])
-  
+
   # Candidate MS3 spectra with different precursor m/z
   ms3_candidates <- sd_filtered %>%
     filter(feature_id == f,
            msLevel == 3,
            !(round(precursorMz) %in% best_precMz))
-  
+
   # Only continue if there are candidates
   if (nrow(ms3_candidates) != 0) {
     print(paste(f,"has", nrow(ms3_candidates), "additional MS3 candidates.", sep=" " ))
@@ -605,8 +607,8 @@ for (f in unique(sd_best$feature_id)) {
     # Join MS3 candidates to their dependent MS4 (if exists)
     ms3_candidates <- ms3_candidates %>%
       left_join(ms4_spectra, by = c("MSntreeID" = "MSntreeID", "acquisitionNum" = "ms3_acq"))
-    
-  
+
+
     # Group by precMzRound, select best MS3, and append MS4
 
     ms3.p.precmz <- split(ms3_candidates, ms3_candidates$precMzRound)
@@ -626,9 +628,9 @@ common_cols <- intersect(names(sd_best), names(all_additional_ms3))
 merged <- bind_rows(
   sd_best[, common_cols],
   all_additional_ms3[, common_cols]
-)  
+)
 
-# create new unique merged tree ID 
+# create new unique merged tree ID
 merged <- merged %>%
   mutate(MergedMSntreeID = as.integer(factor(feature_id)))
 
@@ -662,7 +664,7 @@ if (nrow(dup_groups) > 0) {
   message("Found ", nrow(dup_groups), " spectra in duplicate groups:")
 dup_groups_ordered <- dup_groups %>%
     arrange(feature_id)
-  
+
   print(dup_groups_ordered[, c("feature_id","msLevel","precMz.MS2.Round","precMzRound","peaksCount")])} else {
   message("No duplicate MS4 spectra found.")
 }
@@ -675,7 +677,7 @@ trees, but are connected to existing MS3 spectra via matching precursor
 m/z values, and also have precursor m/z matching actual fragment peaks
 of those MS3 spectra.
 
-###Create set of candidate new MS4 spectra
+### Create set of candidate new MS4 spectra
 
 ```{r}
 # Prepare subsets of the merged spectra
@@ -862,7 +864,7 @@ if (nrow(dup_groups) > 0) {
   message("Found ", nrow(dup_groups), " spectra in duplicate groups:")
 dup_groups_ordered <- dup_groups %>%
     arrange(feature_id)
-  
+
   print(dup_groups_ordered[, c("feature_id","msLevel","precMzRound","precMz.MS2.Round","peaksCount")])} else {
   message("No duplicate spectra found.")
 }
@@ -882,6 +884,7 @@ existing MS4 spectra in merged_spectra
 peaks of their corresponding MS3 parent spectrum in merged_spectra.
 
 ### Create set of candidate new MS4 spectra
+
 ```{r}
 # Create candidate new MS4 spectra
 merged_sd <- as.data.frame(spectraData(merged_spectra))
@@ -908,6 +911,7 @@ ms4_candidates <- sd_filtered %>%
 ```
 
 ### Retain only candidates whose precursor m/z is present among parent MS3 peaks
+
 ```{r}
 # Identify parent MS3 spectra
 parent_ms3_precursors <- unique(ms4_candidates$precursorMz.MS2)
@@ -948,6 +952,7 @@ ms4_candidates_filtered <- ms4_candidates[keep_idx, ]
 ```
 
 ### Check for duplicate MS4 spectra and remove if necessary
+
 ```{r}
 # Prepare merged_spectra metadata for comparison
 merged_sd <- as.data.frame(spectraData(merged_spectra)) %>%
@@ -980,7 +985,9 @@ ms4_candidates_filtered <- ms4_candidates_filtered[keep_new_idx, ]
 message(sum(!keep_new_idx), " candidate MS4 spectra removed because they already exist in merged_spectra.")
 message(nrow(ms4_candidates_filtered), " unique new MS4 spectra retained.")
 ```
+
 ### Select best MS4 per precMS2.precMS3
+
 ```{r}
 ms4_candidates_filtered <- ms4_candidates_filtered %>%
   mutate(
@@ -997,6 +1004,7 @@ newms4_best <- ms4_candidates_filtered %>%
 ```
 
 ### Append new MS4 spectra to merged_spectra
+
 ```{r}
 sd_merged <- as.data.frame(spectraData(merged_spectra))
 
@@ -1050,11 +1058,12 @@ if (nrow(dup_groups) > 0) {
   message("Found ", nrow(dup_groups), " spectra in duplicate groups:")
 dup_groups_ordered <- dup_groups %>%
     arrange(feature_id)
-  
+
   print(dup_groups_ordered[, c("feature_id","msLevel","precMz.MS2.Round","precMzRound","peaksCount")])} else {
   message("No duplicate MS4 spectra found.")
 }
 ```
+
 # Check MS levels in merged MSn trees
 
 ```{r}
@@ -1100,7 +1109,7 @@ as.data.frame(spectraData(merged_subset))
 ```
 
 
-#Save
+# Save
 
 Finally we verify if the number of unique features corresponds to the
 number of unique MergedMSntreeID to ensure that we have one tree per feature.
@@ -1119,10 +1128,6 @@ Now we save the resulting ftms spectra object to a local directory.
 ```{r}
 ftms_one_merged_tree <- merged_spectra
 save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.RData"))
-```
-
-```{r}
-load("data/ftms_one_merged_tree.RData")
 ```
 
 
