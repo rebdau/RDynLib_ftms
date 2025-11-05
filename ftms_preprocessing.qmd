@@ -52,7 +52,7 @@ with the sample and file information.
 In the following code, *\<my.workdir\>* is the working directory:
 
 ```{r}
-setwd("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms")
+##setwd("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms")
 pth <- getwd()
 pth
 ```
