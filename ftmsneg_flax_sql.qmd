@@ -1,0 +1,499 @@
+---
+title: "Flax Qtof negative to Sql format"
+format:
+  html:
+    toc: true
+    self-contained: true
+author: "Ahlam Mentag, Johannes Rainer"
+---
+
+## Shiny Documents
+
+This Quarto document represents the folowing steps to create a Sql database for
+FTMS Flax data
+
+```{r}
+library(Spectra)
+library(xcms)
+library(MsExperiment)
+library(Spectra)
+library(CompoundDb)
+library(RSQLite)
+library(S4Vectors) 
+library(tidyr)
+library(dplyr)
+register(SerialParam())
+setwd("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms")
+pth <- getwd()
+pth
+```
+
+
+```{r}
+load("data/ftms_assembled.RData")
+load("data/ftms_one_merged_tree.RData")
+```
+
+```{r}
+spectraData(ftms_one_merged_tree)$spectrum.type <- "not_assembled"
+```
+
+```{r}
+df <- spectraData(ftms_assembled)
+df[is.na(df$msLevel), ]
+```
+
+
+```{r}
+
+library(Spectra)
+
+ftms_one_merged_tree <- setBackend(ftms_one_merged_tree,  MsBackendMemory())
+ftms_assembled <- setBackend(ftms_assembled,  MsBackendMemory())
+
+# Concatenate
+ftms_all <- concatenateSpectra(ftms_one_merged_tree, ftms_assembled)
+
+
+peaksData(ftms_all)[[1,]]            
+
+spectraData(ftms_all)
+
+```
+
+```{r}
+con <- dbConnect(RSQLite::SQLite(), "data/ftms_flax_neg.sqlite")
+```
+
+```{r}
+#new_exp_id <- max(dbReadTable(con, "experiment")$expid, na.rm = TRUE) + 1
+dbExecute(con, "
+  CREATE TABLE IF NOT EXISTS experiment (
+    expid INTEGER PRIMARY KEY AUTOINCREMENT,  -- auto-incrementing ID
+    date TEXT,
+    user TEXT,
+    machine TEXT,
+    column TEXT,
+    mstype TEXT,
+    buffera TEXT,
+    bufferb TEXT,
+    gradient_time TEXT,
+    source TEXT,
+    mode TEXT,
+    species TEXT,
+    tissue TEXT,
+    ce TEXT,
+    meta TEXT
+  );
+")
+
+```
+
+```{r}
+dbExecute(con, "
+  INSERT INTO experiment 
+    (date, user, machine, column, mstype, buffera, bufferb, gradient_time, source, mode, species, tissue, ce, meta)
+  VALUES 
+    ('2025-10-28', 'Ahlam', 'FTMS', NULL, 'FTMS', NULL, NULL, NULL, NULL, 'neg', NULL, 'seed', NULL, NULL);
+")
+
+```
+
+```{r}
+dbGetQuery(con, "SELECT * FROM experiment;")
+
+```
+
+Create table ms_compound
+```{r}
+dbExecute(con, "
+  CREATE TABLE IF NOT EXISTS ms_compound (
+    compound_id TEXT PRIMARY KEY,
+    expid INTEGER,
+    nodename TEXT,
+    retention_time REAL,
+    mass_measured REAL,
+    name TEXT,
+    formula TEXT,
+    exactmass REAL,
+    ppm_deviation REAL,
+    subsid INTEGER,
+    conversion TEXT,
+    wavelen REAL,
+    smiles TEXT,
+    isotope_ratio REAL,
+    drift_time REAL,
+    composition TEXT,
+    inchi TEXT,
+    inchikey TEXT,
+    FOREIGN KEY (expid) REFERENCES experiment(expid)
+  );
+")
+
+
+```
+
+```{r}
+sp_data <- spectraData(ftms_all)
+head(sp_data[, c("feature_id", "feature_rtmed", "feature_mzmed")])
+
+```
+
+```{r}
+cmp <- sp_data[, c("feature_id", "feature_rtmed", "feature_mzmed")] |>
+  as.data.frame() |>
+  unique()
+
+n <- nrow(cmp)
+
+# Get last numeric compound_id reliably using SQLite
+last_id <- dbGetQuery(con, "
+    SELECT MAX(CAST(compound_id AS INTEGER)) AS max_id
+    FROM ms_compound;
+")$max_id
+
+start_id <- if (is.na(last_id)) 1 else last_id + 1
+
+# Create new compound_id values
+
+
+
+last_expid <- tail(dbReadTable(con, "experiment")$expid, 1)
+# Create the data frame with compound IDs
+ms_compound_df <- data.frame(
+  compound_id = as.character(seq(start_id, length.out = n)),
+  expid = rep(last_expid, n),
+  nodename = cmp$feature_id,
+  retention_time = cmp$feature_rtmed,
+  mass_measured = cmp$feature_mzmed,
+  #spectrum.type = cmp$spectrum.type,
+  name = rep(NA_character_, n),
+  formula = rep(NA_character_, n),
+  exactmass = rep(NA_real_, n),
+  ppm_deviation = rep(NA_real_, n),
+  subsid = rep(NA_integer_, n),
+  conversion = rep(NA_character_, n),
+  wavelen = rep(NA_real_, n),
+  smiles = rep(NA_character_, n),
+  isotope_ratio = rep(NA_real_, n),
+  drift_time = rep(NA_real_, n),
+  composition = rep(NA_character_, n),
+  inchi = rep(NA_character_, n),
+  inchikey = rep(NA_character_, n),
+  stringsAsFactors = FALSE
+)
+
+
+```
+
+```{r}
+#Insert ms_compound table 
+dbWriteTable(con, "ms_compound", ms_compound_df, append = TRUE, row.names = FALSE)
+
+```
+
+```{r}
+#Verification
+dbGetQuery(con, "SELECT * FROM ms_compound LIMIT 10;")
+```
+
+Create msms_spectrum table
+```{r}
+# Drop old table
+dbExecute(con, "DROP TABLE IF EXISTS msms_spectrum;")
+
+# Force all numeric columns in msms_spectrum to REAL
+dbExecute(con, "
+CREATE TABLE msms_spectrum (
+  spectrum_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  compound_id TEXT,
+  ms_level INTEGER,
+  polarity INTEGER,
+  precursor_mz REAL,
+  precursorIntensity REAL,
+  precursorCharge INTEGER,
+  collision_energy TEXT,
+  isolationWindowLowerMz REAL,
+  isolationWindowTargetMz REAL,
+  isolationWindowUpperMz REAL,
+  peaks_count INTEGER,
+  totIonCurrent REAL,
+  basePeakMZ REAL,
+  basePeakIntensity REAL,
+  ionisationEnergy REAL,
+  lowMZ REAL,
+  highMZ REAL,
+  mergedScan INTEGER,
+  mergedResultScanNum INTEGER,
+  mergedResultStartScanNum INTEGER,
+  mergedResultEndScanNum INTEGER,
+  injectionTime REAL,
+  filterString TEXT,
+  spectrumId INTEGER,
+  ionMobilityDriftTime REAL,
+  scanWindowLowerLimit REAL,
+  scanWindowUpperLimit REAL,
+  electronBeamEnergy REAL,
+  originalPrecursorMz REAL,
+  precursorPurity REAL,
+  chromPeakRT REAL,
+  chromPeakMz REAL,
+  chromPeakId TEXT,
+  rtime REAL,
+  scanIndex INTEGER,
+  dataStorage TEXT,
+  centroided INTEGER,
+  smoothed INTEGER,
+  instrument TEXT,
+  splash TEXT,
+  instrument_type TEXT,
+  acquisitionNum INTEGER,
+  precScanNum INTEGER,
+  predicted REAL,
+  dataOrigin TEXT,
+  original_id TEXT,
+  FOREIGN KEY (compound_id) REFERENCES ms_compound(compound_id)
+);
+")
+
+
+
+```
+
+
+```{r}
+sp <- spectraData(ftms_all)
+
+getcol <- function(x) if (x %in% names(sp)) sp[[x]] else NA
+
+msms_df <- data.frame(
+  compound_id = NA,
+  ms_level = getcol("msLevel"),
+  polarity = getcol("polarity"),
+  precursor_mz = getcol("precursorMz"),
+  precursorIntensity = getcol("precursorIntensity"),
+  precursorCharge = getcol("precursorCharge"),  
+  collision_energy = getcol("collisionEnergy"),
+  isolationWindowLowerMz = getcol("isolationWindowLowerMz"),   
+  isolationWindowTargetMz = getcol("isolationWindowTargetMz"),
+  isolationWindowUpperMz = getcol("isolationWindowUpperMz"),
+  peaks_count = getcol("peaksCount"),
+  totIonCurrent = getcol("totIonCurrent"),
+  basePeakMZ = getcol("basePeakMZ"),
+  basePeakIntensity = getcol("basePeakIntensity"),
+  ionisationEnergy = getcol("ionisationEnergy"),
+  lowMZ = getcol("lowMZ"),
+  highMZ = getcol("highMZ"),
+  mergedScan = getcol("mergedScan"),
+  mergedResultScanNum = getcol("mergedResultScanNum"),
+  mergedResultStartScanNum = getcol("mergedResultStartScanNum"),
+  mergedResultEndScanNum = getcol("mergedResultEndScanNum"),
+  injectionTime = getcol("injectionTime"),
+  filterString = getcol("filterString"),
+  spectrumId = getcol("spectrumId"),
+  ionMobilityDriftTime = getcol("ionMobilityDriftTime"),
+  scanWindowLowerLimit = getcol("scanWindowLowerLimit"),
+  scanWindowUpperLimit = getcol("scanWindowUpperLimit"),
+  electronBeamEnergy = getcol("electronBeamEnergy"),
+  originalPrecursorMz = getcol("originalPrecursorMz"),   
+  precursorPurity = getcol("precursorPurity"),
+  chromPeakRT = getcol("chromPeakRT"),
+  chromPeakMz = getcol("chromPeakMz"),
+  chromPeakId = getcol("chromPeakId"),
+  rtime = getcol("rtime"),
+  scanIndex = getcol("scanIndex"),
+  dataStorage = getcol("dataStorage"),
+  centroided = getcol("centroided"),
+  smoothed = getcol("smoothed"),
+  instrument = getcol("instrument"),
+  instrument_type = getcol("instrument_type"),
+  acquisitionNum = getcol("acquisitionNum"),
+  precScanNum = getcol("precScanNum"),
+  predicted = getcol("predicted"),
+  dataOrigin = getcol("dataOrigin"),
+  original_id = getcol("original_id"),
+  stringsAsFactors = FALSE
+)
+msms_df$compound_id <- ms_compound_df$compound_id[match(sp$feature_id, ms_compound_df$nodename)]
+
+
+
+```
+
+
+```{r}
+dbWriteTable(con, "msms_spectrum", msms_df, append = TRUE, row.names = FALSE)
+
+```
+
+```{r}
+dbGetQuery(con, "SELECT * FROM msms_spectrum LIMIT 10;")
+```
+
+```{r}
+dbGetQuery(con, "
+  SELECT *
+  FROM msms_spectrum
+  WHERE compound_id IN (
+    SELECT compound_id
+    FROM msms_spectrum
+    GROUP BY compound_id
+    HAVING COUNT(*) > 1
+  )
+  ORDER BY compound_id;
+")
+
+```
+
+
+Create msms_spectrum_peak
+```{r}
+dbExecute(con, "
+  CREATE TABLE IF NOT EXISTS msms_spectrum_peak (
+    peak_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    spectrum_id INTEGER,
+    mz REAL,
+    intensity REAL,
+    FOREIGN KEY (spectrum_id) REFERENCES msms_spectrum(spectrum_id)
+  );
+")
+
+
+```
+
+
+```{r}
+pd <- peaksData(ftms_all)
+
+# Flatten peaks list into a data frame
+peaks_df <- do.call(
+  rbind,
+  lapply(seq_along(pd), function(i) {
+    if (!is.null(pd[[i]]) && nrow(pd[[i]]) > 0) {
+      data.frame(
+        spectrum_id = i,  # corresponds to row order in msms_spectrum
+        mz = pd[[i]][, 1],
+        intensity = pd[[i]][, 2]
+      )
+    }
+  })
+)
+
+head(peaks_df)
+
+```
+
+
+```{r}
+dbWriteTable(con, "msms_spectrum_peak", peaks_df, append = TRUE, row.names = FALSE)
+
+```
+
+
+```{r}
+dbGetQuery(con, "SELECT * FROM msms_spectrum_peak LIMIT 10;")
+```
+
+Create Synonym table
+```{r}
+dbExecute(con, "
+  CREATE TABLE IF NOT EXISTS Synonym (
+    id INTEGER PRIMARY KEY
+  )
+")
+
+```
+
+Create featue_matrix table
+
+```{r}
+dbExecute(con, "
+  CREATE TABLE IF NOT EXISTS feature_matrix (
+    nodename TEXT,
+    dataOrigin TEXT,
+    Value REAL,
+    expid INTEGER,
+    FOREIGN KEY (expid) REFERENCES experiment(expid)
+  );
+")
+
+```
+
+Create the content of the feature matrix
+```{r}
+load("data/ftms.RData")
+feature_Values <- featureValues(ftms)
+head(feature_Values)
+```
+
+```{r}
+matrix_to_long <- function(feature_values) {
+  feature_values %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("feature_id") %>%
+    pivot_longer(
+      cols = -feature_id,
+      names_to = "dataOrigin",
+      values_to = "Value"
+    )
+}
+
+# Here we call the function
+long_format <- matrix_to_long(feature_Values)
+head(long_format, 10)
+nrow(long_format)
+```
+
+```{r}
+# Get expid from experiment table
+exp_id <- dbGetQuery(con, "SELECT expid FROM experiment LIMIT 1;")$expid
+
+# Add expid column
+long_format$expid <- exp_id
+
+
+```
+
+```{r}
+names(long_format)[names(long_format) == "feature_id"] <- "nodename"
+
+dbWriteTable(con, "feature_matrix", long_format, append = TRUE, row.names = FALSE)
+
+```
+
+```{r}
+dbGetQuery(con, "Select * from feature_matrix LIMIT 10")
+```
+
+Create metadata table
+```{r}
+ md <- make_metadata(source = "Flax FTMS neg", url = NA_character_,
+                    source_version = "1.0.0", source_date = "2025-10-28")
+dbWriteTable(con, name = "metadata", md, row.names = FALSE)
+```
+
+Here we print all the con tables
+```{r}
+
+dbListTables(con)
+```
+
+Convert the data to compDb object
+```{r}
+cdb <- CompDb(con)
+cdb
+```
+
+Convert the compoundDb to a spectra object
+```{r}
+sp <- Spectra(cdb)
+```
+
+```{r}
+spectraData(sp, columns = c("msLevel", "compound_id", "nodename", "rtime", "retention_time"))
+```
+
+```{r}
+spectraVariables(sp)
+```
+

@@ -12,18 +12,29 @@ This document defines and describes the centroiding of the profile-mode FTMS LC-
 
 # Data import and centroiding
 
-We use the *Spectra* package, in particular its `pickPeaks()` function to perform the centroiding. We perform the analysis separately for each original mzXML file and export the data directly to a file in mzML format.
+We first load all required R packages for the analysis in this document.
 
 ```{r}
 #| message: false
 
 #' Load required libraries
 library(Spectra)
+library(MsExperiment)
+library(readxl)
+library(dplyr)
+library(readr)
+library(purrr)
 
+```
+
+We use the *Spectra* package, in particular its `pickPeaks()` function to perform the centroiding. We perform the analysis separately for each original mzXML file and export the data directly to a file in mzML format.
+
+```{r}
 #' Define the paths to the original mzXML files with the profile-mode data
 #' and the path where we want to export the centroided mzML data.
-MZXML_PATH <- "data/mzXML"
-MZML_PATH <- "data/mzML"
+pth <- getwd()
+MZXML_PATH <- file.path(pth, "data", "mzXML")
+MZML_PATH <- file.path(pth, "data", "mzML_cent1")
 
 #' List all files
 fls <- dir(MZXML_PATH, full.name = TRUE)
@@ -47,7 +58,7 @@ In profile-mode data, each mass peak is represented by a distribution of signal.
 
 ```{r}
 
-a_c <- pickPeaks(a, halfWindowSize = 10L, k = 2L, threshold = 0.33)
+a_c <- Spectra::pickPeaks(a, halfWindowSize = 10L, k = 2L, threshold = 0.33)
 
 par(mfrow = c(2, 2))
 plotSpectra(a)
@@ -81,90 +92,36 @@ We proceed now and centroid all data files with the settings above.
 
 ```{r}
 if (!dir.exists(MZML_PATH))
-    dir.create(MZML_PATH, recursize = TRUE)
+    dir.create(MZML_PATH, recursive = TRUE)
 
-for (f in fls) {
-    a <- Spectra(f)
-    fn <- file.path(MZML_PATH, sub("mzXML$", "mzML", basename(f)))
-    a <- pickPeaks(a, halfWindowSize = 10L, k = 2L, threshold = 0.33)
-    export(a, backend = MsBackendMzR(), file = fn,
-           format = "mzML", copy = TRUE)
-}
+library(BiocParallel)
+bpparam <- MulticoreParam(workers = 4)
 
+bplapply(fls, function(f) {
+  message("Processing: ", basename(f))
+  a <- Spectra(f)
+  a <- setBackend(a, MsBackendMemory())
+  a <- Spectra::pickPeaks(a, halfWindowSize = 10L, k = 2L, threshold = 0.33,
+                          msLevel. = 1L)
+  fn <- file.path(MZML_PATH, sub("\\.mzXML$", ".mzML", basename(f)))
+  export(a, backend = MsBackendMzR(), file = fn, format = "mzML",
+         copy = FALSE)
+}, BPPARAM = bpparam)
+
+fn <- file.path(MZML_PATH, sub("\\.mzXML$", ".mzML", basename(fls[1L])))
 b <- Spectra(fn)
+msLevel(b) |> table()
 all(centroided(b))
+
+
 all.equal(a$acquisitionNum, b$acquisitionNum)
 all.equal(a$precScanNum, b$precScanNum)
 all.equal(a$scanIndex, b$scanIndex)
 ```
 
-```{r}
-sample_data_ftms <- read_xlsx("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/ftms_data_files.xlsx") |>
-    as.data.frame()
-file <- "C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms/data/mzML/"
-ftms <- readMsExperiment(paste0(file, sample_data_ftms$data_file),
-                         sampleData = sample_data_ftms)
-ftms
-```
-
-```{r}
-s <- spectra(ftms)
-spectraData(s)
-```
-
-```{r}
-library(dplyr)
-library(readr)
-library(purrr)
-read_csv_safely <- function(file_path, sep = "\t", quote = "\"", header = TRUE, col_types = NULL) {
-  if (!file.exists(file_path)) {
-    stop(paste("Le fichier n'existe pas :", file_path))
-  }
-  
-  tryCatch({
-    data <- read_delim(file_path, delim = sep, quote = quote, col_names = header, col_types = col_types)
-    return(as.data.frame(data))  
-  }, error = function(e) {
-    message("Erreur lors de la lecture avec read_delim : ", e$message)
-    message("Essai avec read.csv...")
-    data <- read.csv(file_path, sep = sep, quote = quote, header = header, stringsAsFactors = FALSE)
-    return(as.data.frame(data))  
-  })
-}
-
-
-ms2_spectra_path <- "C:/Users/amentag/Desktop/these/Ahlam/these/RDynLib/database_QTOF_neg/CSV/MS2spectra.csv"
-col_types_spectra <- cols(
-  MS2PEAKLIST = col_character(),
-  MS2INTENSITYLIST = col_character()
-)
-
-ms2<- read_csv_safely(ms2_spectra_path, sep = "\t", col_types = col_types_spectra)
-
-head(ms2)
-```
-
-```{r}
-
-# Convert comma-separated strings into vectors and compare their lengths
-ms2$peaks_count <- sapply(strsplit(ms2$MS2PEAKLIST, ","), length)
-ms2$intensities_count <- sapply(strsplit(ms2$MS2INTENSITYLIST, ","), length)
-
-# Create a logical column indicating if counts match
-ms2$counts_match <- ms2$peaks_count == ms2$intensities_count
-
-# View summary
-table(ms2$counts_match)
-
-# Optionally, display mismatched rows
-ms2_mismatched <- ms2 %>% filter(!counts_match)
-head(ms2_mismatched)
-
-```
-
 # Questions and notes
 
--   [ ] There seems to be still some fourier transform artefact present in the data after the centroiding. Maybe we could/should use another software for the centroiding? Maybe the original Thermo software?
+-   [ ] There seems to be still some fourier transform artefact present in the data after the centroiding. Maybe we could/should use another software for the centroiding? Maybe the original Thermo software? -\>For future analyses we can record also the MS1 data directly in centroid mode.
 
 # Session information
 
