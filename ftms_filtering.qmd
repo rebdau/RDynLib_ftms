@@ -46,8 +46,8 @@ class(ftms)
 
 ```{r}
 ftms
-library(Spectra)
 
+#convert the ftms XcmsExperiment object to a spectra object
 sp <- spectra(ftms)
 
 ```
@@ -1125,28 +1125,6 @@ save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.R
 load("data/ftms_one_merged_tree.RData")
 ```
 
-```{r}
-tst <- spectraData(ftms_one_merged_tree)[spectraData(ftms_one_merged_tree)$feature_id == "FT5291",]
-tst$dataOrigin
-```
-
-```{r}
-peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT5291" & spectraData(ftms_one_tree)$msLevel == 2,][[1,]]
-```
-
-```{r}
-peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$scanIndex == "FT5341" &
-                  spectraData(ftms_one_tree)$msLevel == 2,][[1,]]
-```
-
-```{r}
-spectraData(ftms_one_tree)
-```
-
-```{r}
-spectraData(ftms_one_tree)[spectraData(ftms_one_tree)$feature_id == "FT0066", ]
-
-```
 
 # Session information
 
