@@ -39,7 +39,7 @@ tree per feature.
 
 ```{r}
 load(file.path(pth, "data", "ftms_one_merged_tree.RData"))
-class(ftms_one_tree)
+class(ftms_one_merged_tree)
 ```
 
 ```{r}
@@ -184,7 +184,7 @@ df[!is.na(df$msLevel), ]
 ```
 
 ```{r}
-peaksData(ftms_one_tree)[spectraData(ftms_one_tree)$MSntreeID == 1788]
+peaksData(ftms_one_merged_tree)[spectraData(ftms_one_merged_tree)$MSntreeID == 1788]
 ```
 
 ```{r}
