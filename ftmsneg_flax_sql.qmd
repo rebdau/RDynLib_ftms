@@ -140,48 +140,53 @@ head(sp_data[, c("feature_id", "feature_rtmed", "feature_mzmed")])
 ```
 
 ```{r}
-cmp <- sp_data[, c("feature_id", "feature_rtmed", "feature_mzmed")] |>
-  as.data.frame() |>
-  unique()
+library(dplyr)
+
+# Convert Spectra DFrame to a normal data.frame
+sp_df <- as.data.frame(sp_data)
+
+# Keep unique features with valid mz and rt
+cmp <- sp_df %>%
+  select(feature_id, feature_rtmed, feature_mzmed) %>%
+  filter(!is.na(feature_id),
+         !is.na(feature_rtmed),
+         !is.na(feature_mzmed)) %>%
+  distinct(feature_id, .keep_all = TRUE)
 
 n <- nrow(cmp)
 
-# Get last numeric compound_id reliably using SQLite
+
 last_id <- dbGetQuery(con, "
     SELECT MAX(CAST(compound_id AS INTEGER)) AS max_id
     FROM ms_compound;
 ")$max_id
 
 start_id <- if (is.na(last_id)) 1 else last_id + 1
-
-# Create new compound_id values
-
-
-
 last_expid <- tail(dbReadTable(con, "experiment")$expid, 1)
-# Create the data frame with compound IDs
+
+# Build final dataframe
 ms_compound_df <- data.frame(
-  compound_id = as.character(seq(start_id, length.out = n)),
-  expid = rep(last_expid, n),
-  nodename = cmp$feature_id,
-  retention_time = cmp$feature_rtmed,
-  mass_measured = cmp$feature_mzmed,
-  #spectrum.type = cmp$spectrum.type,
-  name = rep(NA_character_, n),
-  formula = rep(NA_character_, n),
-  exactmass = rep(NA_real_, n),
-  ppm_deviation = rep(NA_real_, n),
-  subsid = rep(NA_integer_, n),
-  conversion = rep(NA_character_, n),
-  wavelen = rep(NA_real_, n),
-  smiles = rep(NA_character_, n),
-  isotope_ratio = rep(NA_real_, n),
-  drift_time = rep(NA_real_, n),
-  composition = rep(NA_character_, n),
-  inchi = rep(NA_character_, n),
-  inchikey = rep(NA_character_, n),
+  compound_id     = as.character(seq(start_id, length.out = n)),
+  expid           = rep(last_expid, n),
+  nodename        = cmp$feature_id,
+  retention_time  = cmp$feature_rtmed,
+  mass_measured   = cmp$feature_mzmed,
+  name = NA_character_,
+  formula = NA_character_,
+  exactmass = NA_real_,
+  ppm_deviation = NA_real_,
+  subsid = NA_integer_,
+  conversion = NA_character_,
+  wavelen = NA_real_,
+  smiles = NA_character_,
+  isotope_ratio = NA_real_,
+  drift_time = NA_real_,
+  composition = NA_character_,
+  inchi = NA_character_,
+  inchikey = NA_character_,
   stringsAsFactors = FALSE
 )
+
 
 
 ```
@@ -197,6 +202,39 @@ dbWriteTable(con, "ms_compound", ms_compound_df, append = TRUE, row.names = FALS
 dbGetQuery(con, "SELECT * FROM ms_compound LIMIT 10;")
 ```
 
+Verify if there is duplicated nodename
+```{r}
+dbGetQuery(
+  con,
+  "
+  SELECT compound_id, retention_time, nodename
+  FROM ms_compound
+  WHERE expid = 1
+    AND nodename IN (
+        SELECT nodename
+        FROM ms_compound
+        WHERE expid = 1
+        GROUP BY nodename
+        HAVING COUNT(*) > 1
+    )
+  ORDER BY nodename
+  "
+)
+```
+```{r}
+ft_compounds <- dbGetQuery(con, "SELECT compound_id, retention_time FROM ms_compound WHERE expid = 1")
+
+# Count NA and non-NA
+ft_na_count <- sum(is.na(ft_compounds$retention_time))
+ft_not_na_count <- sum(!is.na(ft_compounds$retention_time))
+
+cat("FTMS compounds:\n")
+cat("  NA retention times:", ft_na_count, "\n")
+cat("  Non-NA retention times:", ft_not_na_count, "\n\n")
+```
+all the retention times are not null
+
+
 Create msms_spectrum table
 ```{r}
 # Drop old table
@@ -209,6 +247,7 @@ CREATE TABLE msms_spectrum (
   compound_id TEXT,
   ms_level INTEGER,
   polarity INTEGER,
+  spectrum_type TEXT,
   precursor_mz REAL,
   precursorIntensity REAL,
   precursorCharge INTEGER,
@@ -270,6 +309,7 @@ msms_df <- data.frame(
   compound_id = NA,
   ms_level = getcol("msLevel"),
   polarity = getcol("polarity"),
+  spectrum_type = getcol("spectrum.type"),
   precursor_mz = getcol("precursorMz"),
   precursorIntensity = getcol("precursorIntensity"),
   precursorCharge = getcol("precursorCharge"),  
@@ -490,7 +530,7 @@ sp <- Spectra(cdb)
 ```
 
 ```{r}
-spectraData(sp, columns = c("msLevel", "compound_id", "nodename", "rtime", "retention_time"))
+spectraData(sp, columns = c("msLevel", "compound_id", "nodename", "rtime", "retention_time", "spectrum_type"))
 ```
 
 ```{r}
