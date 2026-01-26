@@ -1,16 +1,18 @@
 ---
-title: "Flax Qtof negative to Sql format"
+title: "Flax FTMS negative to Sql format"
 format:
   html:
     toc: true
     self-contained: true
-author: "Ahlam Mentag, Johannes Rainer"
+author: "Ahlam Mentag, Rebecca Dauwe, Johannes Rainer"
 ---
 
 ## Shiny Documents
 
-This Quarto document represents the folowing steps to create a Sql database for
+This Quarto document represents the following steps to create an Sql database for
 FTMS Flax data
+
+# Required packages
 
 ```{r}
 library(Spectra)
@@ -23,13 +25,46 @@ library(S4Vectors)
 library(tidyr)
 library(dplyr)
 register(SerialParam())
-setwd("C:/Users/amentag/Desktop/Rcodes/RDynLib_ftms")
+```
+
+# Input data and directory structure
+The working directory must be set to the root of the project. From this root directory, a subdirectory named `data/` is required. This directory contains **`Spectra` objects generated upstream** by the Quarto documents:
+
+- `ftms_filtering.qmd`
+- `ftms_assembled.qmd`
+
+The Project directory structure is as follows:
+
+root/
+├── ftms_filtering.qmd
+├── ftms_assembled.qmd
+├── ftms_ftmsneg_flax_sql.qmd
+└── data/
+    ├── ftms_assembled.RData
+    └── ftms_one_merged_tree.RData
+    
+The following data files must be present:
+
+- **`data/ftms_assembled.RData`**  
+  Contains a `Spectra` object with **one merged pseudo-MS² spectrum per feature** of the flax experiment.
+
+- **`data/ftms_one_merged_tree.RData`**  
+  Contains a `Spectra` object with **one assembled spectral tree per feature** of the flax experiment.
+
+All file paths used in this document are **relative to the project root directory**.
+
+### Verify working directory
+
+```{r}
+# Verify working directory
 pth <- getwd()
 pth
 ```
 
+### Loading the data
 
 ```{r}
+# Load Spectra objects
 load("data/ftms_assembled.RData")
 load("data/ftms_one_merged_tree.RData")
 ```
@@ -43,7 +78,11 @@ df <- spectraData(ftms_assembled)
 df[is.na(df$msLevel), ]
 ```
 
-
+### Concatenating Spectra objects
+We concatenate the spectral tree and pseudo-MS² spectra generated above.
+First switch the storage backend of the Spectra objects to in-memory backend, which allows...(TODO: Ahlam can you write here why this is needed?)
+Then combine them into a single Spectra object `ftms_all`. 
+The peaks and metadata of the concatenated spectra are then displayed for inspection.
 ```{r}
 
 library(Spectra)
@@ -61,7 +100,14 @@ spectraData(ftms_all)
 
 ```
 
+# Create SQLite Database for FTMS Spectra
+
+We create a new **SQLite database** to store the FTMS spectra for the flax negative-ion experiment. 
+The database will be stored as `data/ftms_flax_neg.sqlite`. 
+
+### Create a new SQLite connection
 ```{r}
+# Create a new SQLite database connection (file will be created if it doesn't exist)
 con <- dbConnect(RSQLite::SQLite(), "data/ftms_flax_neg.sqlite")
 ```
 
@@ -140,7 +186,6 @@ head(sp_data[, c("feature_id", "feature_rtmed", "feature_mzmed")])
 ```
 
 ```{r}
-library(dplyr)
 
 # Convert Spectra DFrame to a normal data.frame
 sp_df <- as.data.frame(sp_data)
