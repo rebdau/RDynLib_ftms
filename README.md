@@ -16,11 +16,16 @@ This folder contains the following files:
 - [ftms_assembled.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/ftms_assembled.qmd) : In this quarto document
  we create an assembled MS/MS data from ftms object that contains one tree
  per feature created in the ftms_filtering.qmd file.
-  
+
+- [ftmsneg_flax_sql.qmd](https://github.com/rebdau/RDynLib_ftms/blob/main/ftmsneg_flax_sql.qmd) : In this quarto document
+ we create a sql database of flax ftms negative data from the resulting objects
+ from [ftms_filtering.qmd] and [ftms_assembled.qmd], containing the two types of
+ spectra : the assembled and separated ones.
+ 
 **The execution order:**
 
 1. *centroiding.qmd*
 2. *ftms_preprocessing.qmd*
 3. *ftms_filtering.qmd*
 4. *ftms_assembled.qmd*
-
+4. *ftmsneg_flax_sql.qmd*
