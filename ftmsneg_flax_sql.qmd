@@ -80,9 +80,11 @@ df[is.na(df$msLevel), ]
 
 ### Concatenating Spectra objects
 We concatenate the spectral tree and pseudo-MS² spectra generated above.
-First switch the storage backend of the Spectra objects to in-memory backend, which allows...(TODO: Ahlam can you write here why this is needed?)
-Then combine them into a single Spectra object `ftms_all`. 
-The peaks and metadata of the concatenated spectra are then displayed for inspection.
+First switch the storage backend of the Spectra objects to in-memory backend, 
+which allows Efficient access to the spectral data  since some backends may not
+support direct concatenation. Then combine them into a single Spectra object 
+`ftms_all` The peaks and metadata of the concatenated spectra are
+ then displayed for inspection.
 ```{r}
 
 library(Spectra)
@@ -111,6 +113,7 @@ The database will be stored as `data/ftms_flax_neg.sqlite`.
 con <- dbConnect(RSQLite::SQLite(), "data/ftms_flax_neg.sqlite")
 ```
 
+##Create table experiment to store experiment metadata
 ```{r}
 #new_exp_id <- max(dbReadTable(con, "experiment")$expid, na.rm = TRUE) + 1
 dbExecute(con, "
@@ -135,6 +138,7 @@ dbExecute(con, "
 
 ```
 
+##Insert Experiment data to Experiment table
 ```{r}
 dbExecute(con, "
   INSERT INTO experiment 
@@ -145,12 +149,13 @@ dbExecute(con, "
 
 ```
 
+Here we Print the Experiment table after creation and insertion
 ```{r}
 dbGetQuery(con, "SELECT * FROM experiment;")
 
 ```
 
-Create table ms_compound
+##Create table ms_compound to store compounds information
 ```{r}
 dbExecute(con, "
   CREATE TABLE IF NOT EXISTS ms_compound (
@@ -179,12 +184,14 @@ dbExecute(con, "
 
 ```
 
+##Extract spectraData from the flax ftms negative object
 ```{r}
 sp_data <- spectraData(ftms_all)
 head(sp_data[, c("feature_id", "feature_rtmed", "feature_mzmed")])
 
 ```
 
+Insert data to the compound table
 ```{r}
 
 # Convert Spectra DFrame to a normal data.frame
@@ -266,6 +273,8 @@ dbGetQuery(
   "
 )
 ```
+
+
 ```{r}
 ft_compounds <- dbGetQuery(con, "SELECT compound_id, retention_time FROM ms_compound WHERE expid = 1")
 
@@ -280,7 +289,7 @@ cat("  Non-NA retention times:", ft_not_na_count, "\n\n")
 all the retention times are not null
 
 
-Create msms_spectrum table
+#Create msms_spectrum table
 ```{r}
 # Drop old table
 dbExecute(con, "DROP TABLE IF EXISTS msms_spectrum;")
@@ -344,7 +353,7 @@ CREATE TABLE msms_spectrum (
 
 ```
 
-
+## insert spectra data to the msms_spectrum table
 ```{r}
 sp <- spectraData(ftms_all)
 
@@ -415,6 +424,7 @@ dbWriteTable(con, "msms_spectrum", msms_df, append = TRUE, row.names = FALSE)
 dbGetQuery(con, "SELECT * FROM msms_spectrum LIMIT 10;")
 ```
 
+##Verification
 ```{r}
 dbGetQuery(con, "
   SELECT *
@@ -431,7 +441,7 @@ dbGetQuery(con, "
 ```
 
 
-Create msms_spectrum_peak
+##Create msms_spectrum_peak table
 ```{r}
 dbExecute(con, "
   CREATE TABLE IF NOT EXISTS msms_spectrum_peak (
@@ -446,7 +456,7 @@ dbExecute(con, "
 
 ```
 
-
+##insert each individual peak in a single row
 ```{r}
 pd <- peaksData(ftms_all)
 
@@ -479,7 +489,7 @@ dbWriteTable(con, "msms_spectrum_peak", peaks_df, append = TRUE, row.names = FAL
 dbGetQuery(con, "SELECT * FROM msms_spectrum_peak LIMIT 10;")
 ```
 
-Create Synonym table
+##Create an emplty Synonym table
 ```{r}
 dbExecute(con, "
   CREATE TABLE IF NOT EXISTS Synonym (
@@ -489,7 +499,7 @@ dbExecute(con, "
 
 ```
 
-Create featue_matrix table
+##Create featue_matrix table to represent the intensity of each sample in a dataOrigin
 
 ```{r}
 dbExecute(con, "
@@ -504,7 +514,7 @@ dbExecute(con, "
 
 ```
 
-Create the content of the feature matrix
+#Create the content of the feature matrix
 ```{r}
 load("data/ftms.RData")
 feature_Values <- featureValues(ftms)
@@ -550,34 +560,36 @@ dbWriteTable(con, "feature_matrix", long_format, append = TRUE, row.names = FALS
 dbGetQuery(con, "Select * from feature_matrix LIMIT 10")
 ```
 
-Create metadata table
+#Create metadata table
 ```{r}
  md <- make_metadata(source = "Flax FTMS neg", url = NA_character_,
                     source_version = "1.0.0", source_date = "2025-10-28")
 dbWriteTable(con, name = "metadata", md, row.names = FALSE)
 ```
 
-Here we print all the con tables
+#Here we print all the database tables
 ```{r}
 
 dbListTables(con)
 ```
 
-Convert the data to compDb object
+##Convert the sql connection to a compDb object
 ```{r}
 cdb <- CompDb(con)
 cdb
 ```
 
-Convert the compoundDb to a spectra object
+## Convert the compoundDb object to a spectra object
 ```{r}
 sp <- Spectra(cdb)
 ```
 
+##print the spectraData of the resulting spectra object
 ```{r}
 spectraData(sp, columns = c("msLevel", "compound_id", "nodename", "rtime", "retention_time", "spectrum_type"))
 ```
 
+##print the spectraVariables of the resulting spectra object
 ```{r}
 spectraVariables(sp)
 ```
