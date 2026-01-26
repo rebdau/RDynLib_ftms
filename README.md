@@ -17,10 +17,10 @@ This folder contains the following files:
  we create an assembled MS/MS data from ftms object that contains one tree
  per feature created in the ftms_filtering.qmd file.
 
-- [ftmsneg_flax_sql.qmd](https://github.com/rebdau/RDynLib_ftms/blob/main/ftmsneg_flax_sql.qmd) : In this quarto document
- we create a sql database of flax ftms negative data from the resulting objects
- from [ftms_filtering.qmd] and [ftms_assembled.qmd], containing the two types of
- spectra : the assembled and separated ones.
+- [ftmsneg_flax_sql.qmd](https://github.com/rebdau/RDynLib_ftms/blob/main/ftmsneg_flax_sql.qmd) : 
+ In this Quarto document, we create an SQL database of flax FTMS negative mode 
+ data using the objects produced in ftms_filtering.qmd and ftms_assembled.qmd. 
+ The database contains two types of spectra: assembled and separated.
  
 **The execution order:**
 
