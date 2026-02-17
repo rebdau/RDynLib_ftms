@@ -95,6 +95,7 @@ ftms_assembled <- setBackend(ftms_assembled,  MsBackendMemory())
 # Concatenate
 ftms_all <- concatenateSpectra(ftms_one_merged_tree, ftms_assembled)
 
+save(ftms_all, file = "data/ftms_all.RData")
 
 peaksData(ftms_all)[[1,]]            
 
