@@ -1,0 +1,30 @@
+---
+title: "Archiving spectral data, feature data, and experimental metadata from an LC–FTMSⁿ experiment into an SQL database"
+author:
+  - name: Ahlam Mentag
+  - name: Johannes Rainer
+  - name: Rebecca Dauwe
+format:
+  html:
+    toc: false 
+    theme: cosmo
+    self-contained: false
+execute:
+  warning: false
+  message: false
+  error: false
+---
+
+# Welcome to the LC-MSn SQL Database workflow for metabolomics experiments
+
+This website documents the workflow for creating an SQL database containing **spectral data**, **feature data**, and **experiment metadata** from an LC–FTMS MSⁿ (multilevel MS) metabolomics experiment. The workflow integrates seamlessly with existing LC–MS infrastructure and the RforMassSpectrometry ecosystem, and relies on R packages for mass spectrometry data processing and database management, including `Spectra`, `xcms`, `MsExperiment`, `CompoundDb`, and `RSQLite`.
+
+The presented study analyzed flaxseed integument extracts from two flax varieties, and analyses were conducted on an LC–LTQ Orbitrap instrument in negative ionization mode.
+
+The pages below provide step-by-step instructions and reproducible code:
+
+-   [Centroiding](centroiding.qmd) – Centroiding CID spectra if they are in profile mode
+-   [Preprocessing](ftms_preprocessing.qmd) – Peak picking and retention time alignment
+-   [Select Spectral Trees](ftms_filtering.qmd) – Select a single best representative spectral tree per feature, to archive in teh database
+-   [Flatten Spectral Trees into pseudo-MS/MS spectra](ftms_assembled.qmd) – Generate pseudo-MS/MS spectra, to archive in the database
+-   [Database Creation](ftms_flax_sql.qmd) – Build and populate the SQL database

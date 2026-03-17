@@ -1,16 +1,18 @@
 ---
-title: "Flax FTMS negative to Sql format"
+title: "Create an SQL database with spectral data, feature data, and experiment metadata"
 format:
   html:
     toc: true
     self-contained: true
-author: "Ahlam Mentag, Rebecca Dauwe, Johannes Rainer"
+author:
+  - name: Ahlam Mentag
+  - name: Johannes Rainer
+  - name: Rebecca Dauwe
 ---
 
-## Shiny Documents
+## Introduction
 
-This Quarto document represents the following steps to create an Sql database for
-FTMS Flax data
+This Quarto document describes the workflow used to create an SQL database containing spectral data, feature data, and experiment metadata for the FTMS negative-mode flax dataset.
 
 # Required packages
 
@@ -18,7 +20,6 @@ FTMS Flax data
 library(Spectra)
 library(xcms)
 library(MsExperiment)
-library(Spectra)
 library(CompoundDb)
 library(RSQLite)
 library(S4Vectors) 

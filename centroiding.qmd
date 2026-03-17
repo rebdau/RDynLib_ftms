@@ -1,14 +1,26 @@
 ---
-title: "Centroiding of the profile-mode LC-MS/MS data"
-format: html
+title: "Centroiding of profile-mode LC-MSn data"
 tbl-cap-location: bottom
 editor: visual
-date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+author:
+  - name: Ahlam Mentag
+  - name: Johannes Rainer
+  - name: Rebecca Dauwe
+execute:
+  warning: false
+  error: false
+  message: false
+format:
+  html:
+    toc: true
+    self-contained: true
+editor_options:
+  chunk_output_type: inline
 ---
 
 # Introduction
 
-This document defines and describes the centroiding of the profile-mode FTMS LC-MS/MS data. The fragment spectra (MS1-MS4) seem all to be in centroid mode, while the MS1 data is not. So, we need to centroid specifically the MS1 spectra.
+This document defines and describes the centroiding of the profile-mode FTMS LC-MSn data. The fragmentation spectra (MS2-MS4) seem all to be in centroid mode, while the MS1 data is not. So, we need to centroid specifically the MS1 spectra.
 
 # Data import and centroiding
 

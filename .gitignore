@@ -10,3 +10,7 @@ chris_scanning*
 *.pdf
 images/
 *_files/*
+.RData*
+*.Rproj
+word/
+.Rhistory

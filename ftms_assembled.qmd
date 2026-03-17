@@ -1,19 +1,24 @@
 ---
-title: "Create an assembled MS/MS data from Ftms MSn data"
+title: "Create flattened pseudo-MS/MS spectra from multilevel MSn data"
 format:
   html:
     toc: true
     self-contained: true
-author: "Ahlam Mentag, Johannes Rainer"
-editor:
-  markdown:
-    wrap: 72
+author:
+  - name: Ahlam Mentag
+  - name: Johannes Rainer
+  - name: Rebecca Dauwe
+execute:
+  warning: false
+  error: false
+  message: false
+editor: visual
 ---
 
 # Introduction
 
-In this quarto document we create an assembled MS/MS data from ftms
-object that contains one tree per feature created in the
+In this quarto document we create flattened pseudo-MS/MS spectra from a `Spectra`
+object containing one MSn tree per feature, with up to four fragmentation levels (MS2-MS4). The `Spectra object was created in the
 [ftms_filtering.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/ftms_filtering.qmd)
 file.
 

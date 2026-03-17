@@ -4,16 +4,21 @@ format:
   html:
     toc: true
     self-contained: true
-author: "Ahlam Mentag, Johannes Rainer"
-editor:
-  markdown:
-    wrap: 72
+author:
+  - name: Ahlam Mentag
+  - name: Johannes Rainer
+  - name: Rebecca Dauwe
+execute:
+  warning: false
+  error: false
+  message: false
+editor: visual
 ---
 
 # Introduction
 
-This Quarto document presents the analysis of FTMS flaxseed data for
-selecting one representative tree per feature. Preprocessing and feature
+This Quarto document presents the analysis of FTMS LC-MSn flaxseed data for
+selecting one representative spectral tree per feature. Preprocessing and feature
 definition was performed in [Preprocessing steps](ftms_xcms_short.qmd).
 
 # Data import
@@ -204,9 +209,9 @@ The number of spectra from different MS levels is shown below:
 table(msLevel(ftms_msn_tree))
 ```
 
-# Grouping MSn spectra into fragmentation trees
+# Grouping MSn spectra into spectral trees
 
-We now group all spectra that belong to the same fragmentation tree and
+We now group all spectra that belong to the same spectral tree and
 record the precursor m/z of the originating MS2 spectrum for each
 spectrum within that tree.
 
