@@ -17,15 +17,11 @@ editor: visual
 
 # Introduction
 
-In this quarto document we create flattened pseudo-MS/MS spectra from a `Spectra`
-object containing one MSn tree per feature, with up to four fragmentation levels (MS2-MS4). The `Spectra object was created in the
-[ftms_filtering.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/ftms_filtering.qmd)
-file.
+In this quarto document we create flattened pseudo-MS/MS spectra from a `Spectra` object containing one MSn tree per feature, with up to four fragmentation levels (MS2-MS4). The \`Spectra object was created in the [ftms_filtering.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/ftms_filtering.qmd) file.
 
 # Data import
 
-Loading all required libraries and importing the results from the ftms
-filtered object.
+Loading all required libraries and importing the results from the ftms filtered object.
 
 ```{r}
 #| message: false
@@ -39,8 +35,7 @@ pth <- getwd()
 pth
 ```
 
-First we load the `Spectra` ftms_one_tree object with one representative
-tree per feature.
+First we load the `Spectra` ftms_one_tree object with one representative tree per feature.
 
 ```{r}
 load(file.path(pth, "data", "ftms_one_merged_tree.RData"))
@@ -62,11 +57,9 @@ unique_features_ms
 
 ```
 
-## Preprocessing: round mz and remove duplicates
+# Preprocessing: round mz and remove duplicates
 
-Next we round `mz` values to the first integer using `round_perl()`
-function and keep only the most intense peak if rounding results in
-duplicated mz.
+Next we round `mz` values to the first integer using `round_perl()` function and keep only the most intense peak if rounding results in duplicated mz.
 
 ```{r}
 round_perl <- function(number) {
@@ -92,11 +85,9 @@ ftms_one_merged_tree <- addProcessing(ftms_one_merged_tree, peaks_round_mz)
 
 ```
 
-## Combine spectra from the same tree
+# Combine spectra from the same tree
 
-Create a function that takes a list of spectra (matrices), sums
-intensities for identical m/z values across spectra, and returns a
-merged spectrum.
+Create a function that takes a list of spectra (matrices), sums intensities for identical m/z values across spectra, and returns a merged spectrum.
 
 ```{r}
 #'Combine spectra across a tree
@@ -111,7 +102,7 @@ combine_spectra <- function(spectra_list) {
 }
 ```
 
-## Create assembled spectra object
+# Create assembled spectra object
 
 final function to create a new assembled spectra object
 
@@ -196,6 +187,6 @@ peaksData(ftms_one_merged_tree)[spectraData(ftms_one_merged_tree)$MSntreeID == 1
 peaksData(ftms_assembled)[spectraData(ftms_assembled)$MSntreeID == 1788]
 ```
 
-```{r}
+```{r, eval=FALSE}
 save(ftms_assembled, file = file.path(pth, "data", "ftms_assembled.RData"))
 ```

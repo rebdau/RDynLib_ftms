@@ -102,7 +102,7 @@ While we reduced the profile-mode peaks to single mass peaks there is still some
 
 We proceed now and centroid all data files with the settings above.
 
-```{r}
+```{r centroiding, eval=FALSE}
 if (!dir.exists(MZML_PATH))
     dir.create(MZML_PATH, recursive = TRUE)
 

@@ -1,6 +1,7 @@
 project:
   type: website
-
+  output-dir: docs
+  
 website:
   title: "Semi-automated library generation from FTMS LC-MSn data"
   navbar:
@@ -11,9 +12,10 @@ website:
         href: centroiding.qmd
       - text: Preprocessing
         href: ftms_preprocessing.qmd
-      - text: Selecting experiment-wide one representative tree per feature
+      - text: Spectral Tree Selection
         href: ftms_filtering.qmd
-     - text: Creating pseudo-MS/MS spectra from multilevel MSn spectra
+      - text: Pseudo-MS/MS
         href: ftms_assembled.qmd
-     - text: Creating an SQL database
+      - text: SQL database
         href: ftmsneg_flax_sql.qmd
+theme: cosmo 

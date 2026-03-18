@@ -17,14 +17,23 @@ editor: visual
 
 # Introduction
 
-This Quarto document presents the analysis of FTMS LC-MSn flaxseed data for
-selecting one representative spectral tree per feature. Preprocessing and feature
-definition was performed in [Preprocessing steps](ftms_xcms_short.qmd).
+This Quarto document presents the analysis of FTMS LC-MSn flaxseed data for selecting one representative spectral tree per feature. Preprocessing and feature definition was performed in [Preprocessing steps](ftms_xcms_short.qmd).
 
 # Data import
 
-Loading all required libraries and importing the results from the data
-preprocessing.
+Installing the latest development version of RDynLib_2.0.0.
+
+```{r}
+# Check if RDynLib is installed
+pkg_installed <- "RDynLib" %in% rownames(installed.packages())
+if (!pkg_installed) {
+  message("Installing RDynLib dev branch from GitHub...")
+  devtools::install_github("rebdau/RDynLib_SQL@dev", upgrade = "never", quiet = TRUE)
+}
+library(RDynLib)
+```
+
+Loading all required libraries and importing the results from the data preprocessing.
 
 ```{r}
 #| message: false
@@ -41,8 +50,7 @@ pth <- getwd()
 pth
 ```
 
-First we load the `XcmsExperiment` ftms object with the preprocessing
-results.
+First we load the `XcmsExperiment` ftms object with the preprocessing results.
 
 ```{r}
 load(file.path(pth, "data", "ftms.RData"))
@@ -59,14 +67,11 @@ sp <- spectra(ftms)
 
 # Associate MS2 spectra to features
 
-Next, we use `xcms::featureSpectra()` to extract all MS2 spectra for
-each feature from `ftms` object.
+Next, we use `xcms::featureSpectra()` to extract all MS2 spectra for each feature from `ftms` object.
 
 > The `xcms::featureSpectra()` function returns a `Spectra` object.
 >
-> When using `msLevel = 2`, the resulting `Spectra` object contains all
-> MS2 spectra whose retention time and precursor m/z fall within the
-> ranges of any chromatographic peak of a feature.
+> When using `msLevel = 2`, the resulting `Spectra` object contains all MS2 spectra whose retention time and precursor m/z fall within the ranges of any chromatographic peak of a feature.
 
 ```{r}
 ms2 <- featureSpectra(dropFilledChromPeaks(ftms), msLevel = 2, skipFilled = TRUE)
@@ -75,8 +80,7 @@ msLevel(ms2) |>
   table()
 ```
 
-it returns `r length(ms2)` MS level 2 spectra. The total number of
-features for which an MS2 spectrum was identified is:
+it returns `r length(ms2)` MS level 2 spectra. The total number of features for which an MS2 spectrum was identified is:
 
 ```{r}
 length(unique(ms2$feature_id))
@@ -90,10 +94,7 @@ s <- spectra(ftms)
 table(msLevel(s))
 ```
 
-In total, there were `r table(msLevel(s))[2]` MS2 spectra. This means
-that
-`r round((table(msLevel(s))[2]-length(ms2$feature_id))*100/table(msLevel(s))[2], 1)`
-% of the MS2 spectra could not be assigned to any chromatographic peak.
+In total, there were `r table(msLevel(s))[2]` MS2 spectra. This means that `r round((table(msLevel(s))[2]-length(ms2$feature_id))*100/table(msLevel(s))[2], 1)` % of the MS2 spectra could not be assigned to any chromatographic peak.
 
 The percentage of features with at least one MS2:
 
@@ -110,20 +111,16 @@ perc_features_with_ms2
 
 ```
 
-The total number of features with at least one MS2 is
-`r n_features_with_ms2`, which corresponds to
-`r format(perc_features_with_ms2, digits = 3)`%.
+The total number of features with at least one MS2 is `r n_features_with_ms2`, which corresponds to `r format(perc_features_with_ms2, digits = 3)`%.
 
-A summary on the number of MS2 spectra assigned to a feature is shown
-below:
+A summary on the number of MS2 spectra assigned to a feature is shown below:
 
 ```{r}
 table(ms2$feature_id) |>
     quantile()
 ```
 
-The median number of MS2 spectra per feature (across all data files) is
-hence `r median(table(ms2$feature_id))`.
+The median number of MS2 spectra per feature (across all data files) is hence `r median(table(ms2$feature_id))`.
 
 the percentage of MS2 spectra that are assigned to a feature
 
@@ -141,13 +138,9 @@ perc_ms2_assigned
 
 ```
 
-The total number of assigned MS2 spectra is `r n_assigned_ms2`, which
-corresponds to a percentage of
-`r format(perc_ms2_assigned, digits = 3)`.
+The total number of assigned MS2 spectra is `r n_assigned_ms2`, which corresponds to a percentage of `r format(perc_ms2_assigned, digits = 3)`.
 
-Note that an MS2 spectrum could also be assigned to more than one
-feature. The total number of MS2 spectra assigned to more than one
-feature is:
+Note that an MS2 spectrum could also be assigned to more than one feature. The total number of MS2 spectra assigned to more than one feature is:
 
 ```{r}
 ms2_id <- paste0(ms2$dataOrigin, "_", ms2$acquisitionNum)
@@ -156,49 +149,14 @@ ms2_mult <- names(ms2_table)[ms2_table > 1]
 
 ```
 
-Of the `r length(unique(ms2_id))` MS2 spectra, `r length(ms2_mult)` are
-assigned to more than one feature.
+Of the `r length(unique(ms2_id))` MS2 spectra, `r length(ms2_mult)` are assigned to more than one feature.
 
 # Extract all MS2-MSn spectra associated to features
 
-We next define a function to extract the full MSn tree for features.
-This function takes an `XcmsExperiment` object as input, extracts the
-MS2 spectra using `xcms::featureSpectra()` function, and then retrieves
-all MS3 (and subsequently MS4 spectra) for all these MS2 spectra using
-the *precScanNum* spectra variable. The `ftms_all_levels` function
-returns a combined `Spectra` object containing all MS2, MS3, and MS4
-spectra, with each spectrum linked to a feature via a propagated
-`feature_id` from the originally matched MS2 spectrum.
+We next extract the full MSn tree for features. The `RDynLib::ftms_all_levels()`function retrieves, from an `XcmsExperiment` object, all MS3 (and subsequently MS4 spectra) that are associated with MS2 spectra in a given `Spectra` object, and returns a combined `Spectra` object containing all MS2, MS3, and MS4 spectra, with each spectrum linked to a feature via a propagated `feature_id` from the originally matched MS2 spectrum.
 
 ```{r}
-ftms_all_levels <- function(ftms, ms2) {
-
-  #ms2 <- featureSpectra(ftms, msLevel = 2)
-  cat("Number of MS2 spectra found:", length(ms2), "\n")
-
-  res <- lapply(unique(ms2$dataOrigin), function(origin) {
-    ms2_subset <- filterDataOrigin(ms2, origin)
-
-    ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
-    ## To support n:m matches
-    m <- findMatches(ms2_subset$acquisitionNum, ms3_filtered$precScanNum)
-    cat("Number of MS3 matched to MS2:", length(m), "\n")
-    ms3_filtered <- ms3_filtered[to(m)]
-    ms3_filtered$feature_id <- ms2_subset$feature_id[from(m)]
-
-    ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
-    m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
-    cat("Number of MS4 matched to MS3:", length(m), "\n")
-    ms4_filtered <- ms4_filtered[to(m)]
-    ms4_filtered$feature_id <- ms3_filtered$feature_id[from(m)]
-
-    # Combine spectra for this origin
-    c(ms2_subset, ms3_filtered, ms4_filtered)
-  })
-    do.call(c, res)
-}
-
-ftms_msn_tree <- ftms_all_levels(ftms,ms2)
+ftms_msn_tree <- RDynLib:::ftms_all_levels(ftms,ms2)
 
 table(msLevel(ftms_msn_tree))
 ```
@@ -211,135 +169,33 @@ table(msLevel(ftms_msn_tree))
 
 # Grouping MSn spectra into spectral trees
 
-We now group all spectra that belong to the same spectral tree and
-record the precursor m/z of the originating MS2 spectrum for each
-spectrum within that tree.
+We now group all spectra that belong to the same spectral tree and record the precursor m/z of the originating MS2 spectrum for each spectrum within that tree.
 
-The function `assign_msntree_id()` will:
+The function `RDYnLib::assign_msntree_id()` will:
 
 -   Take a `Spectra` object `x` containing MS2–MSn spectra\
 
--   Assign tree IDs to each spectrum in `x`, based on precursor
-    relationships within each sample (`dataOrigin`)\
+-   Assign tree IDs to each spectrum in `x`, based on precursor relationships within each sample (`dataOrigin`)\
 
--   Ensure that MS2 spectra always start a new tree, and that MS3/MS4
-    spectra inherit the tree ID from their parent\
+-   Ensure that MS2 spectra always start a new tree, and that MS3/MS4 spectra inherit the tree ID from their parent\
 
--   Propagate the MS2-level precursor m/z to all downstream spectra in
-    the same tree (MS3, MS4, …), with `NA` for MS2 spectra\
+-   Propagate the MS2-level precursor m/z to all downstream spectra in the same tree (MS3, MS4, …), with `NA` for MS2 spectra\
 
 -   Return the updated `Spectra` object with two new spectra variables:
 
-    -   **`MSntreeID`** — integer ID of the fragmentation tree each
-        spectrum belongs to\
-    -   **`precursorMz.MS2`** — MS2-level precursor m/z propagated to
-        MS3/MS4 (and beyond), `NA` for MS2
+    -   **`MSntreeID`** — integer ID of the fragmentation tree each spectrum belongs to\
+    -   **`precursorMz.MS2`** — MS2-level precursor m/z propagated to MS3/MS4 (and beyond), `NA` for MS2
 
 ```{r}
-assign_msntree_id <- function(x) {
-  ## Order x by MS level: ensures we first assign an ID to the MS2.
-  o <- order(msLevel(x))
-  x <- x[o]
-  scan_index <- scanIndex(x)
-  prec_scan_num <- precScanNum(x)
-  ms_level <- msLevel(x)
-  data_origin <- dataOrigin(x)
-
-  ## store precursorMz values
-  precursor_mz <- precursorMz(x)
-
-  tree_id <- rep(NA_integer_, length(scan_index))
-  ## initialize output vector for MS2-level precursor m/z
-  precursor_mz_MS2 <- rep(NA_real_, length(scan_index))
-
-  global_counter <- 0
-
-  for (origin in unique(data_origin)) {
-    idx <- which(data_origin == origin)
-    origin_scan_index <- scan_index[idx]
-    origin_prec_scan_num <- prec_scan_num[idx]
-    origin_ms_level <- ms_level[idx]
-    ## per-origin precursorMz vector
-    origin_precursor_mz <- precursor_mz[idx]
-    origin_tree_id <- rep(NA_integer_, length(idx))
-    ## per-origin precursorMz.MS2 vector
-    origin_precursor_mz_MS2 <- rep(NA_real_, length(idx))
-
-    scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
-
-    for (i in seq_along(idx)) {
-      level <- origin_ms_level[i]
-      if (level == 2) {
-        ## If MS2 hasn't been assigned yet
-        if (is.na(origin_tree_id[i])) {
-          global_counter <- global_counter + 1
-          origin_tree_id[i] <- global_counter
-        }
-        ## MS2 spectra have no MS2-level precursor
-        origin_precursor_mz_MS2[i] <- NA_real_
-
-      } else {
-        ## Assign ID of the related precursor ID
-        parent_scan <- origin_prec_scan_num[i]
-                parent_pos <- which(origin_scan_index == parent_scan)
-        if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1)) {
-          origin_tree_id[i] <- origin_tree_id[parent_pos]
-
-          ## assign precursorMz.MS2 depending on depth
-          if (level == 3) {
-            origin_precursor_mz_MS2[i] <- origin_precursor_mz[i]
-          } else {
-            ancestor_pos <- parent_pos
-            while (!is.na(ancestor_pos) && origin_ms_level[ancestor_pos] > 3) {
-              ancestor_scan <- origin_prec_scan_num[ancestor_pos]
-              ancestor_pos <- scan_idx_map[as.character(ancestor_scan)]
-            }
-            if (!is.na(ancestor_pos) && origin_ms_level[ancestor_pos] == 3) {
-              origin_precursor_mz_MS2[i] <- origin_precursor_mz[ancestor_pos]
-            } else {
-              origin_precursor_mz_MS2[i] <- NA_real_
-            }
-          }
-
-        } else {
-          stop("MS", level, " with ", length(parent_pos), " precursors")
-        }
-      }
-    }
-    tree_id[idx] <- origin_tree_id
-    ## store per-origin results
-    precursor_mz_MS2[idx] <- origin_precursor_mz_MS2
-  }
-
-  ## Return in original order
-  tree_id <- tree_id[order(o)]
-  ## reorder new variable to match
-  precursor_mz_MS2 <- precursor_mz_MS2[order(o)]
-
-  x <- x[order(o)]
-
-  ## add both to Spectra object
-  x$MSntreeID <- tree_id
-  x$precursorMz.MS2 <- precursor_mz_MS2
-
-  return(x)
-}
-
-
-ftms_msn_tree <- assign_msntree_id(ftms_msn_tree)
-
+ftms_msn_tree <- RDynLib:::assign_msntree_id(ftms_msn_tree)
 spectraVariables(ftms_msn_tree)
-
 ```
 
 ```{r}
 length(unique(ftms_msn_tree$MSntreeID))
 ```
 
-There are in total `r length(unique(ftms_msn_tree$MSntreeID))` spectral
-(fragmentation) trees for in total
-`r length(unique(ftms_msn_tree$feature_id))` features. The distribution
-of the lengths of the fragmentation trees is
+There are in total `r length(unique(ftms_msn_tree$MSntreeID))` spectral (fragmentation) trees for in total `r length(unique(ftms_msn_tree$feature_id))` features. The distribution of the lengths of the fragmentation trees is
 
 ```{r}
 ftms_msn_tree$MSntreeID |>
@@ -349,15 +205,7 @@ ftms_msn_tree$MSntreeID |>
 table(table(ftms_msn_tree$MSntreeID))
 ```
 
-Fragmentation trees have maximally 4 spectra. This is in accordance with
-the setup of the ion trap instrument: The two most intense first order
-product ions were refragmented (if their intensity was above a
-threshold), resulting in maximally two MS3 spectra, and the most intense
-second order product ion of the most intense first order product ion was
-also refragmented (if it's intensity was above a threshold), resulting
-in maximally one MS4 spectrum. So, a fragmentation tree can maximally
-consist of one MS2 spectrum + two MS3 spectra + one MS4 spectrum = four
-spectra.
+Fragmentation trees have maximally 4 spectra. This is in accordance with the setup of the ion trap instrument: The two most intense first order product ions were refragmented (if their intensity was above a threshold), resulting in maximally two MS3 spectra, and the most intense second order product ion of the most intense first order product ion was also refragmented (if it's intensity was above a threshold), resulting in maximally one MS4 spectrum. So, a fragmentation tree can maximally consist of one MS2 spectrum + two MS3 spectra + one MS4 spectrum = four spectra.
 
 ```{r}
 ## we stored the tree ids and the msLevels to a dataframe
@@ -375,22 +223,15 @@ print(t <- table(max_level_per_tree$max_level))
 
 ```
 
-The number of trees that go up to MS2 level is : `r t[1]`. The number of
-trees that go up to MS3 level is : `r t[2]`. The number of trees that go
-up to MS4 level is : `r t[3]`.
+The number of trees that go up to MS2 level is : `r t[1]`. The number of trees that go up to MS3 level is : `r t[2]`. The number of trees that go up to MS4 level is : `r t[3]`.
 
 # Select single best MSn spectral tree per feature
 
-Next we select one most representative tree per feature based on (1) the
-intensity of the precursor, (2) the length of the tree, (3) the total
-number of peaks in all spectra of the tree, and (4) in rare cases of
-several trees with maximal number of peaks: break ties based on
-precursor intensity (max)
+Next we select one most representative tree per feature based on (1) the intensity of the precursor, (2) the length of the tree, (3) the total number of peaks in all spectra of the tree, and (4) in rare cases of several trees with maximal number of peaks: break ties based on precursor intensity (max)
 
 ## (1) Filter out weak precursor trees (lowest precursor intensity)
 
-Keep only trees (`vMSntreeID`v) whose `msLevel == 2` spectrum precursor
-intensity is in the top 75%.
+Keep only trees (`vMSntreeID`v) whose `msLevel == 2` spectrum precursor intensity is in the top 75%.
 
 ```{r}
 sd <- as.data.frame(spectraData(ftms_msn_tree))
@@ -408,8 +249,11 @@ message(length(unique(sd_filtered$feature_id))," of the ", length(unique(sd$feat
 ```
 
 ## (2) Among 75% remaining MSn trees, select the longest tree per feature
+
 ### Remove duplicates after rounding of precursorMz
+
 MS2, MS3, and MS4 spectra have unit resolution. This means that, within the same dataOrigin, MS3 spectra with the same round(precursorMz), and same precursorIntensity, are duplicates. Of these duplicates we only retain the MS3 spectrum with the highest value for peaksCount
+
 ```{r}
 # Round precursor m/z for unit resolution matching
 sd_filtered <- sd_filtered %>%
@@ -437,6 +281,7 @@ message(removed, " duplicate MS3 spectra removed after rounding and deduplicatio
 
 sd_filtered <- sd_filtered_dedup
 ```
+
 ### Select longest tree per feature
 
 ```{r}
@@ -483,7 +328,6 @@ best_MSntreeIDs <- best_tree$MSntreeID
 ftms_msn_tree_best <- ftms_msn_tree[ which(spectraData(ftms_msn_tree)$MSntreeID %in% best_MSntreeIDs) ]
 ```
 
-
 ## (Optional) evaluate based on known spectra
 
 ```{r}
@@ -511,29 +355,15 @@ save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
 
 # Add additional MS3 and MS4 spectra, with different precursorMz, to the selected trees
 
-Here, the purpose is to enrich the selected “best” MSn trees
-(`ftms_msn_tree_best`) with additional MS3-MS4 spectra from other MS2
-and/or MS3 precursors belonging to the same feature, to build a more
-complete merged fragmentation tree. Add, from the "strong" spectral
-trees with MS2 precursor intensity in top 75 %, MS3 spectra with
-different MS2 precursorMz, and MS4 spectra with different MS3 or MS4
-precursorMz, to the selected `ftms_msn_tree_best`. Create new integer
-variable: `ftms_msn_tree_best$MergedMSntreeID`. All spectra belonging to
-the same merged tree (`ftms_msn_tree_best` + added MS3-MS4) will share
-the same `MergedMSntreeID`. Each feature will have 1 merged tree ID.
+Here, the purpose is to enrich the selected “best” MSn trees (`ftms_msn_tree_best`) with additional MS3-MS4 spectra from other MS2 and/or MS3 precursors belonging to the same feature, to build a more complete merged fragmentation tree. Add, from the "strong" spectral trees with MS2 precursor intensity in top 75 %, MS3 spectra with different MS2 precursorMz, and MS4 spectra with different MS3 or MS4 precursorMz, to the selected `ftms_msn_tree_best`. Create new integer variable: `ftms_msn_tree_best$MergedMSntreeID`. All spectra belonging to the same merged tree (`ftms_msn_tree_best` + added MS3-MS4) will share the same `MergedMSntreeID`. Each feature will have 1 merged tree ID.
 
 ## MS3-MS4 spectra from other MS2 precursor
 
-Add within each MSntree of `ftms_msn_tree_best`, MS3 spectra, from the
-75% "strong" trees `sd_filtered`, belonging to same feature but having
-different `round(precurosrMz)` : Select longest tree (meaning MS3 with
-depending MS4 in the same MSntree_id) from these, select highest total
-peakCounts if ties, select highest precursor Intensity of MS3 spectrum
+Add within each MSntree of `ftms_msn_tree_best`, MS3 spectra, from the 75% "strong" trees `sd_filtered`, belonging to same feature but having different `round(precurosrMz)` : Select longest tree (meaning MS3 with depending MS4 in the same MSntree_id) from these, select highest total peakCounts if ties, select highest precursor Intensity of MS3 spectrum
 
 ### Create selectbest.ms3ms4() function:
 
-This function selects best MS3 spectra to be added to merged MSntree,
-and appends any dependent MS4 spectra from the same feature
+This function selects best MS3 spectra to be added to merged MSntree, and appends any dependent MS4 spectra from the same feature
 
 ```{r}
 # Input: a dataframe with spectraData of all MS3 spectra to be added to the MSntree of a specific feature.
@@ -649,6 +479,7 @@ merged_spectra <- ftms_msn_tree[
 spectraData(merged_spectra) <- S4Vectors::DataFrame(merged)
 
 ```
+
 ### Check for duplicates and post-processing if duplicates found
 
 ```{r}
@@ -677,10 +508,7 @@ dup_groups_ordered <- dup_groups %>%
 
 ## MS4 spectra from other `round(`precursor_mz_MS2)\`
 
-Identify “new” MS4 spectra in sd_filtered that aren’t already in merged
-trees, but are connected to existing MS3 spectra via matching precursor
-m/z values, and also have precursor m/z matching actual fragment peaks
-of those MS3 spectra.
+Identify “new” MS4 spectra in sd_filtered that aren’t already in merged trees, but are connected to existing MS3 spectra via matching precursor m/z values, and also have precursor m/z matching actual fragment peaks of those MS3 spectra.
 
 ### Create set of candidate new MS4 spectra
 
@@ -750,6 +578,7 @@ ms4_candidates_filtered <- ms4_candidates[keep_idx, ]
 ```
 
 ### Check for duplicate MS4 spectra and remove if necessary
+
 ```{r}
 # Prepare merged_spectra metadata for comparison
 merged_sd <- as.data.frame(spectraData(merged_spectra)) %>%
@@ -879,14 +708,11 @@ dup_groups_ordered <- dup_groups %>%
 
 Add to merged_spectra the MS4 spectra from sd_filtered such that:
 
-(1) Their parent MS3 already exists in merged_spectra (precursorMz.MS2 %in%
-merged_spectra[msLevel == 3]$precursorMz)
+(1) Their parent MS3 already exists in merged_spectra (precursorMz.MS2 %in% merged_spectra\[msLevel == 3\]\$precursorMz)
 
-(2) Their composite key (precMS2.precMS3) is not already present among
-existing MS4 spectra in merged_spectra
+(2) Their composite key (precMS2.precMS3) is not already present among existing MS4 spectra in merged_spectra
 
-(3) Their precursor m/z (round(precursorMz)) is found among the rounded
-peaks of their corresponding MS3 parent spectrum in merged_spectra.
+(3) Their precursor m/z (round(precursorMz)) is found among the rounded peaks of their corresponding MS3 parent spectrum in merged_spectra.
 
 ### Create set of candidate new MS4 spectra
 
@@ -1096,6 +922,7 @@ ms_summary
 ```
 
 ## inspect merged MSn tree with 5 MS3 spectra
+
 ```{r}
 
 merged_sd <- as.data.frame(spectraData(merged_spectra))
@@ -1113,20 +940,17 @@ merged_subset <- merged_spectra[merged_sd$feature_id == features_5MS3[[1]]]
 as.data.frame(spectraData(merged_subset))
 ```
 
-
 # Save
 
-Finally we verify if the number of unique features corresponds to the
-number of unique MergedMSntreeID to ensure that we have one tree per feature.
+Finally we verify if the number of unique features corresponds to the number of unique MergedMSntreeID to ensure that we have one tree per feature.
+
 ```{r}
 length(unique(unlist(merged_spectra$feature_id)))
 length(unique(unlist(merged_spectra$MergedMSntreeID)))
 length(unique(unlist(merged_spectra$MSntreeID)))
 ```
 
-we have `r length(unique(merged_spectra$MergedMSntreeID))` unique feature and
-unique MSntreeID, That's mean that we have for each feature one
-representative tree.
+we have `r length(unique(merged_spectra$MergedMSntreeID))` unique feature and unique MSntreeID, That's mean that we have for each feature one representative tree.
 
 Now we save the resulting ftms spectra object to a local directory.
 
@@ -1134,7 +958,6 @@ Now we save the resulting ftms spectra object to a local directory.
 ftms_one_merged_tree <- merged_spectra
 save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.RData"))
 ```
-
 
 # Session information
 

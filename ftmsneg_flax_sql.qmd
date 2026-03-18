@@ -8,6 +8,11 @@ author:
   - name: Ahlam Mentag
   - name: Johannes Rainer
   - name: Rebecca Dauwe
+execute:
+  warning: false
+  error: false
+  message: false
+editor: visual
 ---
 
 ## Introduction
@@ -36,6 +41,7 @@ The working directory must be set to the root of the project. From this root dir
 
 The Project directory structure is as follows:
 
+```
 root/
 ├── ftms_filtering.qmd
 ├── ftms_assembled.qmd
@@ -43,7 +49,8 @@ root/
 └── data/
     ├── ftms_assembled.RData
     └── ftms_one_merged_tree.RData
-    
+```
+
 The following data files must be present:
 
 - **`data/ftms_assembled.RData`**  
@@ -563,7 +570,7 @@ dbGetQuery(con, "Select * from feature_matrix LIMIT 10")
 ```
 
 #Create metadata table
-```{r}
+```{r, eval=FALSE}
  md <- make_metadata(source = "Flax FTMS neg", url = NA_character_,
                     source_version = "1.0.0", source_date = "2025-10-28")
 dbWriteTable(con, name = "metadata", md, row.names = FALSE)
