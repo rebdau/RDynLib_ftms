@@ -14,5 +14,7 @@ images/
 *.Rproj
 word/
 .Rhistory
-
+docs/
 /.quarto/
+.quarto/
+_freeze/
