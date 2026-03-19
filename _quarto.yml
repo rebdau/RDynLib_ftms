@@ -1,7 +1,13 @@
 project:
   type: website
-  output-dir: docs
-  
+  render:
+    - index.qmd
+    - centroiding.qmd
+    - ftms_preprocessing.qmd
+    - ftms_filtering.qmd
+    - ftms_assembled.qmd
+    - ftmsneg_flax_sql.qmd
+    
 website:
   title: "Semi-automated library generation from FTMS LC-MSn data"
   navbar:

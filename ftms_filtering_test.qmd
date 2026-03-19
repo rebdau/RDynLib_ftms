@@ -1,0 +1,544 @@
+---
+title: "Selecting one representative tree per feature"
+format:
+  html:
+    toc: true
+    self-contained: true
+author: "Ahlam Mentag, Johannes Rainer"
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+# Introduction
+
+This Quarto document presents the analysis of FTMS flaxseed data for
+selecting one representative tree per feature. Preprocessing and feature
+definition was performed in
+[ftms_preprocessing.qmd](ftms_preprocessing.qmd).
+
+# Data import
+
+Loading all required libraries and importing the results from the data
+preprocessing.
+
+```{r}
+#| message: false
+library(dplyr)
+library(tidyr)
+library(xcms)
+library(MsExperiment)
+library(Spectra)
+library(readxl)
+register(SerialParam())
+pth <- getwd()
+pth
+```
+
+First we load the `XcmsExperiment` ftms object
+
+```{r}
+
+load(file.path(pth, "data", "ftms.RData"))
+class(ftms)
+```
+# Explore MS2 spectra associated to features
+
+Next, we use `xcms::featureSpectra()` to extract all MS2 spectra for
+each feature from `ftms` object.
+
+> The `xcms::featureSpectra()` function returns a `Spectra` object.
+>
+> When using `msLevel = 2`, the resulting `Spectra` object contains all
+> MS2 spectra whose retention time and precursor m/z fall within the
+> ranges of any chromatographic peak of a feature.
+
+```{r}
+ms2 <- featureSpectra(ftms, msLevel = 2)
+
+msLevel(ms2) |>
+  table()
+```
+
+it returns 1679 MS level 2 spectra. The total number of features for
+which an MS2 spectrum was identified is:
+
+```{r}
+length(unique(ms2$feature_id))
+```
+
+```{r}
+scanIndex.per.ori <- split(ms2$scanIndex, ms2$dataOrigin)
+lapply(scanIndex.per.ori, function(x) any(duplicated(x)))
+lapply(scanIndex.per.ori, function(x) x[duplicated(x)])
+ms2.per.ori <- split(ms2, ms2$dataOrigin)
+s1r3 <- ms2.per.ori[[3]]                     
+spdat  <-spectraData(s1r3)
+spdat[spdat$scanIndex %in% 1815:1817,]
+names(spdat)
+spdat$scanIndex[duplicated(spdat$scanIndex)]
+spdat[spdat$scanIndex == 1814,]#ScanIndex 1814 is assigned to two FeatureIDs: FT3146 and FT3149
+spdat[spdat$scanIndex == 1540,]#ScanIndex 1540 is assigned to two FeatureIDs: FT0870 and FT0871
+spdat[spdat$scanIndex == 381,]#ScanIndex 381 is assigned to two FeatureIDs: FT0268 and FT0270 and their retention time is 30 seconds different
+spdat_si381 <- spdat[spdat$scanIndex == 381,]
+spdat_si381$rtime - spdat_si381$feature_rtmed#rt of spectrum is closer to rtmed of feature FT0268
+#but the precursor could be a mixture of both features
+
+
+```
+
+
+```{r}
+fdefs <- featureDefinitions(ftms)
+feature_ids <- rownames(fdefs) 
+#FT3146
+fid <- "FT0268"
+finfo <- fdefs[fid, ]
+eic1 <- chromatogram(
+  ftms,
+  mz = c(finfo$mzmin, finfo$mzmax),
+  rt = c(150, 250)
+)
+
+#FT3149
+fid <- "FT0270"
+finfo <- fdefs[fid, ]
+eic2 <- chromatogram(
+  ftms,
+  mz = c(finfo$mzmin, finfo$mzmax),
+  rt = c(150, 250)
+)
+
+par(mfrow = c(2, 1))
+plot(eic1)
+plot(eic2)
+
+```
+Here we print the initial number of MSLevels.
+
+```{r}
+s <- spectra(ftms)
+table(msLevel(s))
+```
+
+In total, there were 20804 MS2 spectra. This means that 92% of the MS2
+spectra ((20804-1679)\*100/20804) could not be assigned to any
+chromatographic peak.
+
+# Extract all MS2-MSn spectra associated to features
+
+We next define a function to extract the full MSn tree for features.
+This function takes an `XcmsExperiment` object as input, extracts the
+MS2 spectra using `xcms::featureSpectra()` function, and then retrieves
+all MS3 (and subsequently MS4 spectra) for all these MS2 spectra using
+the *precScanNum* spectra variable. The `ftms_all_levels` function
+returns a combined `Spectra` object containing all MS2, MS3, and MS4
+spectra, with each spectrum linked to a feature via a propagated
+`feature_id` from the originally matched MS2 spectrum.
+
+```{r}
+ftms_all_levels <- function(ftms) {
+
+  ms2 <- featureSpectra(ftms, msLevel = 2)
+  cat("Number of MS2 spectra found:", length(ms2), "\n")
+
+  res <- lapply(unique(ms2$dataOrigin), function(origin) {
+    ms2_subset <- filterDataOrigin(ms2, origin)
+
+    ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
+    ## To support n:m matches
+    m <- findMatches(ms2_subset$acquisitionNum, ms3_filtered$precScanNum)
+    cat("Number of MS3 matched to MS2:", length(m), "\n")
+    ms3_filtered <- ms3_filtered[to(m)]
+    ms3_filtered$feature_id <- ms2_subset$feature_id[from(m)]
+
+    ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
+    m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
+    cat("Number of MS4 matched to MS3:", length(m), "\n")
+    ms4_filtered <- ms4_filtered[to(m)]
+    ms4_filtered$feature_id <- ms3_filtered$feature_id[from(m)]
+
+    # Combine spectra for this origin
+    c(ms2_subset, ms3_filtered, ms4_filtered)
+  })
+    do.call(c, res)
+}
+
+ftms_msn_tree <- ftms_all_levels(ftms)
+
+table(msLevel(ftms_msn_tree))
+```
+
+Checking the MSn data for one feature - and evaluate if the relationship
+between the MSn spectra is correct.
+
+```{r}
+ft <- "FT4282"
+
+a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
+a
+
+#' split by dataOrigin
+al <- split(a, a$dataOrigin)
+
+al[[1]]
+
+spectraData(al[[1]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
+#' This looks correct. Testing the next
+
+spectraData(al[[2]], columns = c("msLevel", "acquisitionNum", "precScanNum"))
+#' This too.
+
+ft <- "FT0649"
+a <- ftms_msn_tree[ftms_msn_tree$feature_id == ft]
+a
+
+#' split by dataOrigin
+al <- split(a, a$dataOrigin)
+
+spectraData(al[[1]], columns = c("dataOrigin", "msLevel", "acquisitionNum", "precScanNum", "precursorMz")) |>
+    as.data.frame()
+
+#' Looks correct. To feature FT0649, in sample S1R1, there are 4 MS2 spectra linked, which correctly have all the same precursorMz = 285. The four MS2 spectra have acquisitionNum 3851, 3870, 3905, and 3919.
+#' Let's see what filterPrecursorScan does
+
+filterPrecursorScan(al[[1]], 3851)
+filterPrecursorScan(al[[1]], 3870)
+filterPrecursorScan(al[[1]], 3905)
+filterPrecursorScan(al[[1]], 3919)
+
+spectraData(filterPrecursorScan(al[[1]], 3851), columns = c("msLevel", "acquisitionNum", "precScanNum", "precursorMz"))|>as.data.frame()
+spectraData(filterPrecursorScan(al[[1]], 3852), columns = c("msLevel", "acquisitionNum", "precScanNum", "precursorMz"))|>as.data.frame()
+spectraData(filterPrecursorScan(al[[1]], 3854), columns = c("msLevel", "acquisitionNum", "precScanNum", "precursorMz"))|>as.data.frame()
+#' Seems to be OK
+```
+
+The above result shows that `filterPrecursorScan()` extracts the full
+MSn tree: it includes spectra of levels MS2 or higher
+
+-   whose acquisition number itself matches the given Precursor scan
+    number
+-   AND whose precScanNum matches the given Precursor scan number
+-   AND higher level spectra that depend on it
+-   AND lower level spectra that gave rise to it
+
+The number of spectra from different MS levels is shown below:
+
+```{r}
+table(msLevel(ftms_msn_tree))
+```
+
+We next need to group all MSn spectra from one fragmentation tree
+together.
+
+The function `assign_msntree_id()` will:
+
+-   Take a `Spectra` object `x` containing MS2–MSn spectra\
+-   Assign tree IDs to each spectrum in `x`, based on precursor
+    relationships within each sample (`dataOrigin`)\
+-   Ensure that MS2 spectra always start a new tree, and that MS3/MS4
+    spectra inherit the tree ID from their parent
+-   Return a vector of integers, the same length as the number of
+    spectra in `x`, where each integer represents the fragmentation tree
+    ID the spectrum belongs to
+
+The output of the `assign_msntree_id()` function is then added to the
+`Spectra` object as a new spectra variable *MSntreeID*.
+
+```{r}
+
+assign_msntree_id <- function(x) {
+  ## Order x by MS level: ensures we first assign an ID to the MS2.
+  o <- order(msLevel(x))
+  x <- x[o]
+  scan_index <- scanIndex(x)
+  prec_scan_num <- precScanNum(x)
+  ms_level <- msLevel(x)
+  data_origin <- dataOrigin(x)
+
+  tree_id <- rep(NA_integer_, length(scan_index))
+  global_counter <- 0
+
+  for (origin in unique(data_origin)) {
+    idx <- which(data_origin == origin)
+    origin_scan_index <- scan_index[idx]
+    origin_prec_scan_num <- prec_scan_num[idx]
+    origin_ms_level <- ms_level[idx]
+    origin_tree_id <- rep(NA_integer_, length(idx))
+
+    scan_idx_map <- setNames(seq_along(origin_scan_index), origin_scan_index)
+
+    for (i in seq_along(idx)) {
+      level <- origin_ms_level[i]
+      if (level == 2) {
+        ## If MS2 hasn't been assigned yet
+        if (is.na(origin_tree_id[i])) {
+          global_counter <- global_counter + 1
+          origin_tree_id[i] <- global_counter
+        }
+      } else {
+        ## Assign ID of the related precursor ID
+        parent_scan <- origin_prec_scan_num[i]
+        parent_pos <- scan_idx_map[as.character(parent_scan)]
+        if (length(parent_pos) == 1 && origin_ms_level[parent_pos] == (level - 1))
+          origin_tree_id[i] <- origin_tree_id[parent_pos]
+        else
+          stop("MS", level, " with ", length(parent_pos), " precursors")
+      }
+    }
+    tree_id[idx] <- origin_tree_id
+  }
+  ## Return in original order
+  return(tree_id[order(o)])
+}
+
+msntree_ids <- assign_msntree_id(ftms_msn_tree)
+
+ftms_msn_tree$MSntreeID <- msntree_ids
+spectraVariables(ftms_msn_tree)
+
+```
+
+The total number of MSn trees:
+
+```{r}
+length(unique(ftms_msn_tree$MSntreeID))
+```
+
+for in total `r length(unique(ftms_msn_tree$feature_id))` features. The
+distribution of the lengths of the fragmentation trees is
+
+```{r}
+ftms_msn_tree$MSntreeID |>
+    table() |>
+    quantile()
+```
+
+There is apparently (at least) one tree with 7 spectra. Extracting this
+particular MSn tree.
+
+```{r}
+max_index <- ftms_msn_tree$MSntreeID |>
+    table() |>
+    as.integer() |>
+    which.max()
+
+max_tree <- ftms_msn_tree[ftms_msn_tree$MSntreeID == max_index]
+max_tree$rtime
+max_tree$msLevel
+max_tree$precScanNum
+max_tree$scanIndex
+max_tree$acquisitionNum
+max_tree$dataOrigin
+max_tree$feature_id
+```
+
+Within dataOrigin S1R3, scanIndex 1815, 1816, and 1817 are assigned to
+two different features: FT3146, and FT3149. Below, we have a closer look
+at these two features.
+
+```{r}
+feat <- c("FT3146","FT3149")
+feat_idx <- ms2sp$feature_id %in% feat
+ms2sp[feat_idx,]
+```
+
+Features FT3146, and FT3149 have almost exactly the same mzmin and
+mzmax, but 10 seconds difference in rtmed. We have a look at EICs for
+these two features.
+
+```{r}
+fdefs <- featureDefinitions(ftms)
+feature_ids <- rownames(fdefs) 
+#FT3146
+fid <- "FT3146"
+finfo <- fdefs[fid, ]
+eic1 <- chromatogram(
+  ftms,
+  mz = c(finfo$mzmin, finfo$mzmax),
+  rt = c(1000, 1100)
+)
+
+#FT3149
+fid <- "FT3149"
+finfo <- fdefs[fid, ]
+eic2 <- chromatogram(
+  ftms,
+  mz = c(finfo$mzmin, finfo$mzmax),
+  rt = c(1000, 1100)
+)
+
+par(mfrow = c(2, 1))
+plot(eic1)
+plot(eic2)
+
+```
+
+The chromatographic peaks of these two features are extremely similar,
+there is no real shift in retention time. It looks like we should merge
+these these two features.
+
+The code below merges two specific features in an XcmsExperiment object:
+[QUESTION for JoRainer: is there an existing xcms function to merge two features?]
+```{r}
+# Manually merging two features in an XcmsExperiment object
+# Extract feature definitions, chromPeaks, and Sample Data
+fdefs <- featureDefinitions(ftms)
+cp <- chromPeaks(ftms)
+sdata <- sampleData(ftms)
+
+# Extract the two feature IDs to merge
+fid1 <- "FT3146"
+fid2 <- "FT3149"
+
+f1 <- fdefs[fid1, ]
+f2 <- fdefs[fid2, ]
+
+# Merge the peak indices
+merged_peakidx <- unique(c(unlist(f1$peakidx), unlist(f2$peakidx)))
+
+# Get sample indices for merged peaks
+sample_indices <- cp[merged_peakidx, "sample"]
+
+# Determine sample group membership
+sample_group_membership <- sdata$sample_id[sample_indices]
+sample_counts <- table(factor(sample_group_membership, levels = unique(sample_groups)))
+
+# Construct merged feature row
+merged_feature <- DataFrame(
+  mzmed = mean(c(f1$mzmed, f2$mzmed)),
+  mzmin = min(f1$mzmin, f2$mzmin),
+  mzmax = max(f1$mzmax, f2$mzmax),
+  rtmed = mean(c(f1$rtmed, f2$rtmed)),
+  rtmin = min(f1$rtmin, f2$rtmin),
+  rtmax = max(f1$rtmax, f2$rtmax),
+  npeaks = as.numeric(length(unique(sample_names))),
+  peakidx = I(list(merged_peakidx)),
+  ms_level = unique(c(f1$ms_level, f2$ms_level))
+)
+
+# Add per-group sample columns
+group_cols <- colnames(fdefs)[colnames(fdefs) %in% names(sample_counts)]
+for (grp in group_cols) {
+  merged_feature[[grp]] <- as.numeric(sample_counts[[grp]])
+}
+merged_feature <- merged_feature[, colnames(fdefs)]
+
+# Replace original features with merged one
+fdefs_new <- fdefs[!(rownames(fdefs) %in% c(fid1, fid2)), ]
+fdefs_new <- rbind(fdefs_new, as.data.frame(merged_feature))
+rownames(fdefs_new)[nrow(fdefs_new)] <- paste0(fid1, "_", fid2, "_merged")
+
+# Update the XcmsExperiment object
+featureDefinitions(ftms) <- fdefs_new
+
+
+```
+
+TODO: After merging two features: in spectraData of ftms_msn_tree (sampleOrigin S1R3), scanIndex 1815, 1816, 1817 are double. One should be removed.
+```{r}
+al <- split(ftms_msn_tree, ftms_msn_tree$dataOrigin)
+S1R3 <- al[[3]]
+spdat  <-spectraData(S1R3)
+spdat[spdat$scanIndex %in% 1815:1817,]
+
+```
+
+
+TODO: create code to check if MSn_trees are assigned to more than one
+feature
+
+```{r}
+## we stored the tree ids and the msLevels to a dataframe
+df <- spectraData(ftms_msn_tree, c("MSntreeID", "msLevel")) |>
+    as.data.frame()
+
+## here we take count the last level of each tree
+library(dplyr)
+max_level_per_tree <- df %>%
+  group_by(MSntreeID) %>%
+  summarise(max_level = max(msLevel), .groups = "drop")
+
+
+table(max_level_per_tree$max_level)
+
+```
+
+The number of trees that go up to MS2 level is : 415 The number of trees
+that go up to MS3 level is : 338 The number of trees that go up to MS4
+level is : 926
+
+Next we select one most representative tree per feature based on the
+longest one and if we have many, we select one tree with the highest MS2
+precursor intensity
+
+```{r}
+
+filtered_trees_spectra <- function(db) {
+
+  # Extract metadata from the Spectra object
+  sps_data <- as.data.frame(spectraData(db))
+
+  # Split by feature_id
+  feat_block <- split(sps_data, f = sps_data$feature_id)
+
+  # Selection function applied to each feature block
+  selection <- function(feature_block) {
+    #Select the most frequent MSnTreeID
+    max_number <- max(table(feature_block$MSntreeID))
+    FTmax <- names(table(feature_block$MSntreeID))[table(feature_block$MSntreeID) == max_number]
+    feat_block_sel1 <- feature_block[feature_block$MSntreeID %in% as.numeric(FTmax), ]
+    feat_block_sel1_MS2 <- feat_block_sel1[feat_block_sel1$msLevel == 2, ]
+
+    if (nrow(feat_block_sel1_MS2) == 0) return(NULL)
+    #Select the one with the highest MS2 precursor Intensity
+    index <- order(feat_block_sel1_MS2$precursorIntensity, decreasing = TRUE)[1]
+    selected_FT <- feat_block_sel1_MS2$MSntreeID[index]
+    feature_block[feature_block$MSntreeID == selected_FT, ]
+  }
+
+  # Apply selection across all feature blocks
+  selected_trees_list <- lapply(feat_block, selection)
+  selected_trees_df <- do.call(rbind, selected_trees_list)
+
+  # Subset the original spectra object
+  selected_sps <- db[db$MSntreeID %in% selected_trees_df$MSntreeID]
+
+  cat("Spectra object filtré avec succès!\n")
+  return(selected_sps)
+}
+
+ftms_one_tree <- filtered_trees_spectra(ftms_msn_tree)
+
+msLevel(ftms_one_tree) |> table()
+
+```
+
+after selecting one representative tree per feature we have now: MS2 :
+437, MS3 : 523, MS4 : 262
+
+Finally we verify if the number of unique features corresponds to the
+number of unique MSntreeID to ensure that we have one tree per feature.
+
+```{r}
+length(unique(ftms_one_tree$feature_id))
+```
+
+```{r}
+length(unique(ftms_one_tree$MSntreeID))
+```
+
+we have 437 unique feature and unique MSntreeID, That's mean that we
+have for each feature one representative tree.
+
+Now we save the resulting ftms spectra object to a local directory.
+
+```{r}
+save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
+```
+
+# Session information
+
+```{r}
+sessionInfo()
+```

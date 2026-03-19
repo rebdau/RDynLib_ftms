@@ -14,3 +14,5 @@ images/
 *.Rproj
 word/
 .Rhistory
+
+/.quarto/

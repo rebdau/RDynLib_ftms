@@ -63,7 +63,7 @@
 #' length(msn)
 #'
 #' @importFrom xcms featureSpectra
-#' @importFrom Spectra Spectra filterDataOrigin filterMsLevel
+#' @import Spectra
 #' @importFrom S4Vectors findMatches
 #' @export
 ftms_all_levels <- function(ftms, ms2) {
@@ -73,14 +73,14 @@ ftms_all_levels <- function(ftms, ms2) {
   res <- lapply(unique(ms2$dataOrigin), function(origin) {
     ms2_subset <- filterDataOrigin(ms2, origin)
     
-    ms3_filtered <- filterDataOrigin(filterMsLevel(Spectra::spectra(ftms), 3), origin)
+    ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
     ## To support n:m matches
     m <- findMatches(ms2_subset$acquisitionNum, ms3_filtered$precScanNum)
     cat("Number of MS3 matched to MS2:", length(m), "\n")
     ms3_filtered <- ms3_filtered[to(m)]
     ms3_filtered$feature_id <- ms2_subset$feature_id[from(m)]
     
-    ms4_filtered <- filterDataOrigin(filterMsLevel(Spectra::spectra(ftms), 4), origin)
+    ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
     m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
     cat("Number of MS4 matched to MS3:", length(m), "\n")
     ms4_filtered <- ms4_filtered[to(m)]

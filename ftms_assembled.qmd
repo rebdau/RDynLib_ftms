@@ -17,7 +17,7 @@ editor: visual
 
 # Introduction
 
-In this quarto document we create flattened pseudo-MS/MS spectra from a `Spectra` object containing one MSn tree per feature, with up to four fragmentation levels (MS2-MS4). The \`Spectra object was created in the [ftms_filtering.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/ftms_filtering.qmd) file.
+In this quarto document we create an assembled MS/MS data from ftms object that contains one tree per feature created in [Select Spectral Trees](ftms_filtering).
 
 # Data import
 
@@ -29,6 +29,7 @@ library(dplyr)
 library(tidyr)
 library(xcms)
 library(Spectra)
+library(RDynLib)
 
 register(SerialParam())
 pth <- getwd()
@@ -59,29 +60,11 @@ unique_features_ms
 
 # Preprocessing: round mz and remove duplicates
 
-Next we round `mz` values to the first integer using `round_perl()` function and keep only the most intense peak if rounding results in duplicated mz.
+Using the `RDynLib::peaks_round_mz()` function, we round `mz` values to the first integer and keep only the most intense peak if rounding results in duplicated mz.
 
 ```{r}
-round_perl <- function(number) {
-  floor(number + 0.5)
-}
-
-peaks_round_mz <- function(x, spectrumMsLevel, ...) {
-    x[, 1L] <- round_perl(x[, 1L])
-    df <- as.data.frame(x)
-  colnames(df) <- c("mz", "intensity")
-  # Keep only highest intensity for duplicated mz
-  df <- df %>%
-    group_by(mz) %>%
-    slice_max(order_by = intensity, n = 1, with_ties = FALSE) %>%
-    arrange(mz)
-  # Return as matrix
-  as.matrix(df)
-
-}
 
 ftms_one_merged_tree <- addProcessing(ftms_one_merged_tree, peaks_round_mz)
-
 
 ```
 
@@ -102,7 +85,7 @@ combine_spectra <- function(spectra_list) {
 }
 ```
 
-# Create assembled spectra object
+## Create assembled spectra object
 
 final function to create a new assembled spectra object
 

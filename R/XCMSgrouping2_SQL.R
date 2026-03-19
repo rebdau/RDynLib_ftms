@@ -26,6 +26,10 @@
 #'
 #' @importFrom DBI dbDisconnect
 #'
+#' @import Spectra
+#'
+#' @import dplyr
+#'
 #' @author Ahlam Mentag
 #'
 #' @export         

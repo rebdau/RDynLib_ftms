@@ -17,21 +17,9 @@ editor: visual
 
 # Introduction
 
-This Quarto document presents the analysis of FTMS LC-MSn flaxseed data for selecting one representative spectral tree per feature. Preprocessing and feature definition was performed in [Preprocessing steps](ftms_xcms_short.qmd).
+This Quarto document presents the analysis of FTMS LC-MSn flaxseed data for selecting one representative spectral tree per feature. Preprocessing and feature definition was performed in [Preprocessing steps](ftms_preprocessing).
 
 # Data import
-
-Installing the latest development version of RDynLib_2.0.0.
-
-```{r}
-# Check if RDynLib is installed
-pkg_installed <- "RDynLib" %in% rownames(installed.packages())
-if (!pkg_installed) {
-  message("Installing RDynLib dev branch from GitHub...")
-  devtools::install_github("rebdau/RDynLib_SQL@dev", upgrade = "never", quiet = TRUE)
-}
-library(RDynLib)
-```
 
 Loading all required libraries and importing the results from the data preprocessing.
 
@@ -45,6 +33,7 @@ library(Spectra)
 library(readxl)
 library(IRanges)
 library(S4Vectors)
+library(RDynLib)
 register(SerialParam())
 pth <- getwd()
 pth
@@ -156,7 +145,7 @@ Of the `r length(unique(ms2_id))` MS2 spectra, `r length(ms2_mult)` are assigned
 We next extract the full MSn tree for features. The `RDynLib::ftms_all_levels()`function retrieves, from an `XcmsExperiment` object, all MS3 (and subsequently MS4 spectra) that are associated with MS2 spectra in a given `Spectra` object, and returns a combined `Spectra` object containing all MS2, MS3, and MS4 spectra, with each spectrum linked to a feature via a propagated `feature_id` from the originally matched MS2 spectrum.
 
 ```{r}
-ftms_msn_tree <- RDynLib:::ftms_all_levels(ftms,ms2)
+ftms_msn_tree <- ftms_all_levels(ftms,ms2)
 
 table(msLevel(ftms_msn_tree))
 ```
@@ -187,7 +176,7 @@ The function `RDYnLib::assign_msntree_id()` will:
     -   **`precursorMz.MS2`** — MS2-level precursor m/z propagated to MS3/MS4 (and beyond), `NA` for MS2
 
 ```{r}
-ftms_msn_tree <- RDynLib:::assign_msntree_id(ftms_msn_tree)
+ftms_msn_tree <- assign_msntree_id(ftms_msn_tree)
 spectraVariables(ftms_msn_tree)
 ```
 
@@ -350,7 +339,7 @@ Now we save the resulting ftms spectra object to a local directory.
 
 ```{r}
 ftms_one_tree <- ftms_msn_tree_best
-save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
+#save(ftms_one_tree, file = file.path(pth, "data", "ftms_one_tree.RData"))
 ```
 
 # Add additional MS3 and MS4 spectra, with different precursorMz, to the selected trees
@@ -954,7 +943,7 @@ we have `r length(unique(merged_spectra$MergedMSntreeID))` unique feature and un
 
 Now we save the resulting ftms spectra object to a local directory.
 
-```{r}
+```{r, eval=FALSE}
 ftms_one_merged_tree <- merged_spectra
 save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.RData"))
 ```
