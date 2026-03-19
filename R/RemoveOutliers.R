@@ -1,0 +1,15 @@
+RemoveOutliers<-function(LCal,rng){
+	m.trdiff<-mean(as.numeric(LCal[,6]))
+	sd.trdiff<-sd(as.numeric(LCal[,6]))
+	diff.low=m.trdiff-rng*sd.trdiff
+	diff.high=m.trdiff+rng*sd.trdiff
+	i=1
+	while(i<=dim(LCal)[1]){
+	 if((as.numeric(LCal[i,6])<diff.low)|(as.numeric(LCal[i,6])>diff.high)){
+	  LCal<-LCal[-i,]
+	  next
+	 }
+	 i=i+1
+	}
+	return(LCal)
+}

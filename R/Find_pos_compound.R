@@ -1,0 +1,24 @@
+Find_pos_compound<-function(mass.ftng,time.ftng,ftps.o,err,lc.err,rg){
+	mass.sel<-mass.ftng+2.01456
+	mass.lb=mass.sel-err
+	mass.ub=mass.sel+err
+	pred_time=rg[1]+rg[2]*time.ftng
+	time.lb=pred_time-lc.err
+	time.ub=pred_time+lc.err
+	pres<-array(dim=c(0,4))
+	j=1
+	while(j<=dim(ftps.o)[1]){
+	 jak<-as.integer(rep(0,4))
+	 jak[1]<-ifelse(ftps.o[j,2]>mass.lb,1,0)
+	 jak[2]<-ifelse(ftps.o[j,2]<mass.ub,1,0)
+	 jak[3]<-ifelse(ftps.o[j,1]>time.lb,1,0)
+	 jak[4]<-ifelse(ftps.o[j,1]<time.ub,1,0)
+	 if(all(jak==c(1,1,1,1))){
+	  int<-ftps.o[j,1:4]
+	  pres<-rbind(pres,int)
+	 }
+	 if(ftps.o[j,2]>=mass.ub)break
+	 j=j+1
+	}
+	return(pres)
+}

@@ -1,0 +1,19 @@
+plotAlignment<-function(LCal,rng,startpoint){
+	LCal1<-LCal
+	m.trdiff<-mean(as.numeric(LCal1[,6]))
+	sd.trdiff<-sd(as.numeric(LCal1[,6]))
+	diff.low=m.trdiff-rng*sd.trdiff
+	diff.high=m.trdiff+rng*sd.trdiff
+	i=1
+	while(i<=dim(LCal1)[1]){
+	 if((as.numeric(LCal1[i,6])<diff.low)|(as.numeric(LCal1[i,6])>diff.high)){
+	  LCal1<-LCal1[-i,]
+	  next
+	 }
+	 i=i+1
+	}
+	LCal.FT<-as.numeric(LCal1[,2])
+	LCal.Syn<-as.numeric(LCal1[,4])
+	rg<-Plot_LCalign(LCal.FT,LCal.Syn,startpoint)
+	return(list(LCal1,rg))
+}

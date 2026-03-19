@@ -1,0 +1,12 @@
+AutomFindingISF<-function(XCMS,exp,ft,ms2.ft){
+	fgcol=dim(XCMS)[2]-3
+	XCMS3<-data.frame()
+	fg=2
+	repeat{
+	 XCMS.ISF<-FindingISF(fg,exp,ft,ms2.ft,XCMS)
+	 XCMS3<-rbind(XCMS3,XCMS.ISF)
+	 if(fg==max(XCMS[,fgcol]))break
+	 fg=fg+1
+	}
+	return(XCMS3)
+}
