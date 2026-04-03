@@ -435,7 +435,7 @@ dbWriteTable(con, "msms_spectrum", msms_df, append = TRUE, row.names = FALSE)
 ```
 
 ```{r}
-dbGetQuery(con, "SELECT * FROM msms_spectrum LIMIT 10;")
+dbGetQuery(con, "SELECT * FROM msms_spectrum LIMIT 1;")
 ```
 
 ##Verification
@@ -500,7 +500,7 @@ dbWriteTable(con, "msms_spectrum_peak", peaks_df, append = TRUE, row.names = FAL
 ```
 
 ```{r}
-dbGetQuery(con, "SELECT * FROM msms_spectrum_peak LIMIT 10;")
+dbGetQuery(con, "SELECT * FROM msms_spectrum_peak LIMIT 1;")
 ```
 
 ##Create an emplty Synonym table
@@ -573,7 +573,7 @@ dbWriteTable(con, "feature_matrix", long_format, append = TRUE, row.names = FALS
 ```
 
 ```{r}
-dbGetQuery(con, "Select * from feature_matrix LIMIT 10")
+dbGetQuery(con, "Select * from feature_matrix LIMIT 1")
 ```
 
 #Create metadata table
