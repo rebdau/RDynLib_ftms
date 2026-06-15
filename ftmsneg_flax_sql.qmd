@@ -92,9 +92,6 @@ df[is.na(df$msLevel), ]
 We concatenate the spectral tree and pseudo-MS² spectra generated above. First switch the storage backend of the Spectra objects to in-memory backend, which allows Efficient access to the spectral data since some backends may not support direct concatenation. Then combine them into a single Spectra object `ftms_all` The peaks and metadata of the concatenated spectra are then displayed for inspection.
 
 ```{r}
-
-library(Spectra)
-
 ftms_one_merged_tree <- setBackend(ftms_one_merged_tree,  MsBackendMemory())
 ftms_assembled <- setBackend(ftms_assembled,  MsBackendMemory())
 

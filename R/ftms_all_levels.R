@@ -70,24 +70,58 @@ ftms_all_levels <- function(ftms, ms2) {
   
   cat("Number of MS2 spectra found:", length(ms2), "\n")
   
+  ##Convert to in-memory backend 
+  sps <- Spectra::setBackend(spectra(ftms), MsBackendMemory())
+  ms2 <- Spectra::setBackend(ms2, MsBackendMemory())
+  
   res <- lapply(unique(ms2$dataOrigin), function(origin) {
-    ms2_subset <- filterDataOrigin(ms2, origin)
     
-    ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
-    ## To support n:m matches
-    m <- findMatches(ms2_subset$acquisitionNum, ms3_filtered$precScanNum)
+    ## MS2
+    ms2_subset <- applyProcessing(filterDataOrigin(ms2, origin))
+    
+    ## MS3
+    ms3_filtered <- applyProcessing(
+      filterDataOrigin(
+        sps[msLevel(sps) == 3],
+        origin
+      )
+    )
+    
+    m <- findMatches(
+      ms2_subset$acquisitionNum,
+      ms3_filtered$precScanNum
+    )
+    
     cat("Number of MS3 matched to MS2:", length(m), "\n")
+    
     ms3_filtered <- ms3_filtered[to(m)]
     ms3_filtered$feature_id <- ms2_subset$feature_id[from(m)]
+    ms3_filtered <- applyProcessing(ms3_filtered)
     
-    ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
-    m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
+    ## MS4
+    ms4_filtered <- applyProcessing(
+      filterDataOrigin(
+        sps[msLevel(sps) == 4],
+        origin
+      )
+    )
+    
+    m <- findMatches(
+      ms3_filtered$acquisitionNum,
+      ms4_filtered$precScanNum
+    )
+    
     cat("Number of MS4 matched to MS3:", length(m), "\n")
+    
     ms4_filtered <- ms4_filtered[to(m)]
     ms4_filtered$feature_id <- ms3_filtered$feature_id[from(m)]
+    ms4_filtered <- applyProcessing(ms4_filtered)
     
-    # Combine spectra for this origin
+    ## Combine
+    ms2_subset <- applyProcessing(ms2_subset)
+    
     c(ms2_subset, ms3_filtered, ms4_filtered)
   })
+  
   do.call(c, res)
 }

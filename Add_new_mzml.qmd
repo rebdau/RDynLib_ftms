@@ -1,0 +1,348 @@
+---
+title: "Adding a new mzMl file to the database"
+format:
+  html:
+    toc: true
+    self-contained: true
+author: "Ahlam Mentag, Rebecca Dauwe, Johannes Rainer"
+---
+
+## Shiny Documents
+
+This Quarto document presents the processing workflow for a new mzML (raw) file
+corresponding to a herbacetin experiment. It describes the steps required to add
+the experiment to the SQL database.
+
+
+##Load required libraries
+
+```{r}
+#| message: false
+
+#' Load required libraries
+library(MsExperiment)
+library(Spectra)
+library(xcms)
+library(readxl)
+library(pander)
+library(pheatmap)
+library(S4Vectors)
+library(devtools)
+library(DBI)
+library(RSQLite)
+library(here)
+library(dplyr)
+library(tidyr)
+library(IRanges)
+library(MSnbase)
+rm(list = c("conv.CSPP_SQL"))
+#` Uploading RDynLib: Load all functions of the RDynlib directory
+load_all()
+register(SerialParam())
+```
+
+Import the mzml file and create a corresponding sample data 
+```{r}
+mzml_file <- here("data","BeTio_herbacetin1327_F2T3.mzML")
+
+sample_data_ftms <- DataFrame(
+    sample_id = "S1",
+    sample_name = "Sample_1"
+)
+```
+
+
+then, we perform the centroiding
+```{r}
+sp <- Spectra(mzml_file)
+a_c <- Spectra::pickPeaks(sp, halfWindowSize = 10L, k = 2L, threshold = 0.33,
+                          msLevel. = 1L)
+
+```
+
+Next we export the centroided file
+```{r}
+
+export(
+  a_c,
+  backend = MsBackendMzR(),
+  file = here("data","BeTio_herbacetin1327_F2T3_centroided.mzML"),
+  format = "mzML",
+  copy = FALSE
+)
+```
+
+Convert the mzML file to an MSExperiment object
+```{r}
+mzml_file_c <- here("data","BeTio_herbacetin1327_F2T3_centroided.mzML")
+ftms <- readMsExperiment(
+    mzml_file_c,
+    sampleData = sample_data_ftms
+)
+ftms
+```
+
+colors assignment for the heatmap visualization
+```{r}
+sampleData(ftms)
+col_sample_ftms <- "blue"
+col_sample_ftms_id <- c(S1 = "blue")
+col_sample_ftms <- "blue"
+```
+
+Base peak chromatogram
+```{r}
+bpc0 <- chromatogram(ftms, aggregationFun = "max")
+
+plot(bpc0, col = col_sample_ftms)
+grid()
+```
+
+Filter by mass to get the feature range of herbacetin
+```{r}
+ftms <- filterSpectra(ftms, filterMzRange, mz = c(625.0, 625.4), msLevel. = 1L)
+
+table(msLevel(spectra(ftms)))
+```
+
+Filter by rt to get the retention time range of herbacetin
+```{r}
+ftms <- filterSpectra(ftms, filterRt, c(690, 790))
+
+table(msLevel(spectra(ftms)))
+```
+
+Here we remove the empty spectra 
+```{r}
+ftms <- filterSpectra(ftms, filterEmptySpectra)
+
+table(msLevel(spectra(ftms)))
+```
+
+Visualizing the base peak chromatogram again:
+```{r}
+bpc0 <- chromatogram(ftms, aggregationFun = "max")
+
+plot(bpc0, col = col_sample_ftms)
+grid()
+```
+
+```{r}
+ftms <- findChromPeaks(ftms, CentWaveParam(peakwidth = c(20, 80),
+                                            integrate = 2, snthresh = 2))
+```
+```{r}
+pks <- chromPeaks(ftms)
+quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
+quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
+```
+We next perform the **chromatographic peak refinement** to reduce the
+number of potential centWave-specific peak detection artifacts. We
+choose settings that depend on the observed peak widths above (i.e., about half
+of the observed median widths).
+```{r}
+mnpp <- MergeNeighboringPeaksParam(expandRt = 10, expandMz = 0.001,
+                                   minProp = 0.66)
+ftms <- refineChromPeaks(ftms, mnpp)
+```
+
+```{r}
+rt_widths <- unname(pks[, "rtmax"] - pks[, "rtmin"])
+# Compute 75th percentile and multiply by 3
+peakwidth <- quantile(rt_widths, 0.75) * 3
+cpp <- CleanPeaksParam(maxPeakwidth = peakwidth)
+
+ftms <- refineChromPeaks(ftms, cpp)
+```
+
+Next, we group chromPeaks
+```{r}
+pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
+                        bw = 6, minFraction = 0.3, binSize = 0.1,
+                        ppm = 10)
+
+ftms <- groupChromPeaks(ftms, param = pdp)
+```
+
+
+```{r}
+ftms_sub <- ftms
+## Change the backend to in-memory backend
+ftms_sub@spectra <- setBackend(spectra(ftms_sub), MsBackendMemory())
+## Apply any processing steps
+ftms_sub@spectra <- applyProcessing(spectra(ftms_sub))
+
+```
+
+
+```{r}
+sp <- spectra(ftms_sub)
+spectraData(sp)
+```
+
+
+```{r}
+cps <- chromPeakSpectra(ftms_sub, ppm = 10)
+cps$precursorMz
+```
+
+Visualizing some peaks:
+```{r}
+peaksData(sp)[[2]]
+```
+
+```{r}
+peaksData(sp)[[126]]
+```
+
+We remove the MS1, and keep juste the MS2, MS3, and MS4 spectra:
+```{r}
+sps <- spectra(ftms_sub)
+
+frag_sps <-  chromPeakSpectra(ftms_sub, msLevel = 2, ppm = 10)
+
+#spectraData(frag_sps)$feature_id <- "FT001"
+
+spectraData(frag_sps)
+
+msLevel(frag_sps) |>
+  table()
+```
+
+Rename the chrom_peak_id column to feature_id for more compatibility with 
+the workflow
+```{r}
+frag_sps$feature_id <- frag_sps$chrom_peak_id
+frag_sps$feature_mzmed <- frag_sps$chrom_peak_mz
+frag_sps$feature_rtmed <- frag_sps$chrom_peak_rt
+```
+
+
+We next extract the full MSn tree for the feature:
+```{r}
+ftms_msn_tree <- ftms_all_levels(ftms,frag_sps)
+```
+Asigning an id for each tree
+```{r}
+ftms_msn_tree_herba <- assign_msntree_id(ftms_msn_tree)
+spectraVariables(ftms_msn_tree_herba)
+```
+```{r}
+length(unique(ftms_msn_tree_herba$MSntreeID))
+ftms_msn_tree_herba$MSntreeID |>
+    table() |>
+    quantile()
+
+table(table(ftms_msn_tree_herba$MSntreeID))
+```
+```{r}
+save(ftms_msn_tree_herba, file = here("data", "ftms_msn_tree_herba.RData"))
+```
+
+
+Create assembled tree (pseudo MS2) by calling the assembledSpectraTree() function
+from RDynlib package:
+
+```{r}
+
+ftms_assembled_herba <- assembleSpectraTree(ftms_msn_tree_herba)
+
+ftms_assembled_herba
+unique(spectraData(ftms_assembled_herba)$msLevel)
+```
+
+```{r}
+spectraData(ftms_assembled_herba)
+```
+Add "not_assembled" label to the initial object with separated spectrums 
+```{r}
+spectraData(ftms_one_merged_tree)$spectrum.type <- "not_assembled"
+```
+
+Concatenate both spectra objects with "assembled" and "not_assembled" object.
+```{r}
+ftms_one_merged_tree <- setBackend(ftms_one_merged_tree,  MsBackendMemory())
+ftms_assembled_herba <- setBackend(ftms_assembled_herba,  MsBackendMemory())
+
+# Concatenate
+ftms_all_herba <- concatenateSpectra(ftms_one_merged_tree, ftms_assembled_herba)
+
+peaksData(ftms_all_herba)[[1,]]            
+
+head(spectraData(ftms_all_herba), 3)
+```
+
+
+
+Create sql database of this feature
+```{r}
+dbfile <- here("data", "herba_ftneg.sqlite")
+createSpectraSQLite(
+    sps = ftms_all_herba,
+    dbfile = dbfile,
+    date = "18/6/2025",
+    user = "herbacytine",
+    machine = "FTMS",
+    mode = "neg",
+    tissue = "flax",
+    mstype = NULL,
+    column = NULL,
+    buffera = NULL,
+    bufferb = NULL,
+    gradient_time = NULL,
+    source = NULL,
+    species = NULL,
+    ce = NULL,
+    meta = NULL
+)
+```
+
+
+Add herbacytine to dynlib sql
+```{r}
+dbf0 <- here("data","DYL_FLAX_FTMSneg.sqlite")
+db <- dbConnect(SQLite(), dbf0)
+```
+
+```{r}
+dbGetQuery(db, "
+  SELECT MAX(CAST(expid AS INTEGER)) AS max_expid
+  FROM experiment
+")
+```
+```{r}
+# Create new database
+dbf <- here("data", "DYL_herba_FTMSneg.sqlite")
+con_merged <- dbConnect(RSQLite::SQLite(), dbf)
+
+# merge
+merge_databases(
+  main_db   = here("data","DYL_FLAX_FTMSneg.sqlite"),
+  add_db    = here("data","herba_ftneg.sqlite"),
+  output_db = here("data","DYL_herba_FTMSneg.sqlite")
+)
+```
+```{r}
+dbf <- here("data", "DYL_herba_FTMSneg.sqlite")
+con_merged <- dbConnect(RSQLite::SQLite(), dbf)
+```
+
+
+
+```{r}
+dbGetQuery(con_merged, "
+  SELECT MAX(CAST(expid AS INTEGER)) AS max_expid
+  FROM experiment
+")
+```
+```{r}
+dbGetQuery(con_merged, "Select * from experiment where expid = '266' or expid = '267' or expid = '268' or expid = '269' ")
+```
+
+```{r}
+add_db <- here("data","herba_ftneg.sqlite")
+con_herba <- dbConnect(RSQLite::SQLite(), add_db)
+dbGetQuery(con_herba, "Select * from experiment ")
+```
+
+

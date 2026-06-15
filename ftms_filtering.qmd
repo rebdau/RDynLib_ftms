@@ -948,6 +948,34 @@ ftms_one_merged_tree <- merged_spectra
 save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.RData"))
 ```
 
+```{r}
+load(file.path(pth, "data", "ftms_one_merged_tree.RData"))
+```
+
+```{r}
+length(unique(unlist(ftms_one_merged_tree$feature_id)))
+length(unique(unlist(ftms_one_merged_tree$MergedMSntreeID)))
+length(unique(unlist(ftms_one_merged_tree$MSntreeID)))
+```
+
+```{r}
+spectraData(ftms_one_merged_tree)
+```
+
+```{r}
+library(dplyr)
+
+# Convert to base data.frame
+df <- as.data.frame(spectraData(ftms_one_merged_tree))
+
+
+# Get max MS level per tree
+final_levels <- tapply(df$msLevel, df$MergedMSntreeID, max, na.rm = TRUE)
+
+# Count
+table(final_levels)
+```
+
 # Session information
 
 ```{r}
