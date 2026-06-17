@@ -41,18 +41,12 @@ load_all()
 register(SerialParam())
 ```
 
-Import the mzml file and create a corresponding sample data 
+Import the mzml file  
 ```{r}
 mzml_file <- here("data","BeTio_herbacetin1327_F2T3.mzML")
-
-sample_data_ftms <- DataFrame(
-    sample_id = "S1",
-    sample_name = "Sample_1"
-)
 ```
 
-
-then, we perform the centroiding
+#Centroiding 
 ```{r}
 sp <- Spectra(mzml_file)
 a_c <- Spectra::pickPeaks(sp, halfWindowSize = 10L, k = 2L, threshold = 0.33,
@@ -62,7 +56,6 @@ a_c <- Spectra::pickPeaks(sp, halfWindowSize = 10L, k = 2L, threshold = 0.33,
 
 Next we export the centroided file
 ```{r}
-
 export(
   a_c,
   backend = MsBackendMzR(),
@@ -71,10 +64,16 @@ export(
   copy = FALSE
 )
 ```
+#Convert the mzml file to an MSExperiment object
 
-Convert the mzML file to an MSExperiment object
+Convert the mzML file to an MSExperiment object and import 
+the corresponding sample data
 ```{r}
 mzml_file_c <- here("data","BeTio_herbacetin1327_F2T3_centroided.mzML")
+sample_data_ftms <- DataFrame(
+    sample_id = "S1",
+    sample_name = "Sample_1"
+)
 ftms <- readMsExperiment(
     mzml_file_c,
     sampleData = sample_data_ftms
@@ -90,7 +89,7 @@ col_sample_ftms_id <- c(S1 = "blue")
 col_sample_ftms <- "blue"
 ```
 
-Base peak chromatogram
+## Base peak chromatogram
 ```{r}
 bpc0 <- chromatogram(ftms, aggregationFun = "max")
 
@@ -98,28 +97,28 @@ plot(bpc0, col = col_sample_ftms)
 grid()
 ```
 
-Filter by mass to get the feature range of herbacetin
+## Filter by mass to get the feature range of herbacetin
 ```{r}
 ftms <- filterSpectra(ftms, filterMzRange, mz = c(625.0, 625.4), msLevel. = 1L)
 
 table(msLevel(spectra(ftms)))
 ```
 
-Filter by rt to get the retention time range of herbacetin
+## Filter by rt to get the retention time range of herbacetin
 ```{r}
 ftms <- filterSpectra(ftms, filterRt, c(690, 790))
 
 table(msLevel(spectra(ftms)))
 ```
 
-Here we remove the empty spectra 
+## Remove empty spectra 
 ```{r}
 ftms <- filterSpectra(ftms, filterEmptySpectra)
 
 table(msLevel(spectra(ftms)))
 ```
 
-Visualizing the base peak chromatogram again:
+#Visualizing the base peak chromatogram again:
 ```{r}
 bpc0 <- chromatogram(ftms, aggregationFun = "max")
 
@@ -127,6 +126,7 @@ plot(bpc0, col = col_sample_ftms)
 grid()
 ```
 
+#Peak detection
 ```{r}
 ftms <- findChromPeaks(ftms, CentWaveParam(peakwidth = c(20, 80),
                                             integrate = 2, snthresh = 2))
@@ -136,26 +136,8 @@ pks <- chromPeaks(ftms)
 quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
 quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
 ```
-We next perform the **chromatographic peak refinement** to reduce the
-number of potential centWave-specific peak detection artifacts. We
-choose settings that depend on the observed peak widths above (i.e., about half
-of the observed median widths).
-```{r}
-mnpp <- MergeNeighboringPeaksParam(expandRt = 10, expandMz = 0.001,
-                                   minProp = 0.66)
-ftms <- refineChromPeaks(ftms, mnpp)
-```
 
-```{r}
-rt_widths <- unname(pks[, "rtmax"] - pks[, "rtmin"])
-# Compute 75th percentile and multiply by 3
-peakwidth <- quantile(rt_widths, 0.75) * 3
-cpp <- CleanPeaksParam(maxPeakwidth = peakwidth)
-
-ftms <- refineChromPeaks(ftms, cpp)
-```
-
-Next, we group chromPeaks
+#Group chromPeaks
 ```{r}
 pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
                         bw = 6, minFraction = 0.3, binSize = 0.1,
@@ -164,7 +146,7 @@ pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
 ftms <- groupChromPeaks(ftms, param = pdp)
 ```
 
-
+Change the backend to MsBackendMemory for further analysis
 ```{r}
 ftms_sub <- ftms
 ## Change the backend to in-memory backend
@@ -174,7 +156,7 @@ ftms_sub@spectra <- applyProcessing(spectra(ftms_sub))
 
 ```
 
-
+Visualizing spectra data
 ```{r}
 sp <- spectra(ftms_sub)
 spectraData(sp)
@@ -194,8 +176,9 @@ peaksData(sp)[[2]]
 ```{r}
 peaksData(sp)[[126]]
 ```
+#Associate MS2 spectra to features
 
-We remove the MS1, and keep juste the MS2, MS3, and MS4 spectra:
+We remove the MS1 spectra, and keep juste the MS2, MS3, and MS4 spectra:
 ```{r}
 sps <- spectra(ftms_sub)
 
@@ -208,7 +191,6 @@ spectraData(frag_sps)
 msLevel(frag_sps) |>
   table()
 ```
-
 Rename the chrom_peak_id column to feature_id for more compatibility with 
 the workflow
 ```{r}
@@ -217,6 +199,7 @@ frag_sps$feature_mzmed <- frag_sps$chrom_peak_mz
 frag_sps$feature_rtmed <- frag_sps$chrom_peak_rt
 ```
 
+#Grouping MSn spectra into spectral trees
 
 We next extract the full MSn tree for the feature:
 ```{r}
@@ -235,17 +218,49 @@ ftms_msn_tree_herba$MSntreeID |>
 
 table(table(ftms_msn_tree_herba$MSntreeID))
 ```
+#Select single best MSn spectral tree per feature
+
+Next we select one most representative tree per feature based on  the intensity of the precursor
+
+Keep only trees (vMSntreeIDv) whose msLevel == 2 spectrum precursor intensity is in the top 75%.
+
 ```{r}
-save(ftms_msn_tree_herba, file = here("data", "ftms_msn_tree_herba.RData"))
+sd <- as.data.frame(spectraData(ftms_msn_tree_herba))
+ms2 <- subset(sd, msLevel == 2)
+threshold <- quantile(ms2$precursorIntensity, 0.25, na.rm = TRUE)
+strong_MSntrees <- unique(ms2$MSntreeID[ms2$precursorIntensity > threshold])
+sd_filtered <- subset(sd, MSntreeID %in% strong_MSntrees)
+
+length(unique(sd_filtered$feature_id))
+length(unique(sd$feature_id))
+removed.features <- length(unique(sd$feature_id)) - length(unique(sd_filtered$feature_id))
+message(removed.features, " features were removed after selecting only spectra with top 75% precursor intensity.")
+message(length(unique(sd_filtered$feature_id))," of the ", length(unique(sd$feature_id)), " features remain.")
+sd_filtered$MSntreeID
+```
+Filter the spectra object
+
+```{r}
+best_MSntreeIDs <- sd_filtered$MSntreeID
+ftms_msn_tree_best <- ftms_msn_tree_herba[ which(spectraData(ftms_msn_tree_herba)$MSntreeID %in% best_MSntreeIDs) ]
+spectraData(ftms_msn_tree_best)
 ```
 
+Now the spectra object contains just one tree. 
+
+Save the object with trees localy:
+```{r}
+save(ftms_msn_tree_best, file = here("data", "ftms_msn_tree_best.RData"))
+```
+
+#Pseudo MS2 spectra
 
 Create assembled tree (pseudo MS2) by calling the assembledSpectraTree() function
 from RDynlib package:
 
 ```{r}
 
-ftms_assembled_herba <- assembleSpectraTree(ftms_msn_tree_herba)
+ftms_assembled_herba <- assembleSpectraTree(ftms_msn_tree_best)
 
 ftms_assembled_herba
 unique(spectraData(ftms_assembled_herba)$msLevel)
@@ -256,12 +271,13 @@ spectraData(ftms_assembled_herba)
 ```
 Add "not_assembled" label to the initial object with separated spectrums 
 ```{r}
-spectraData(ftms_one_merged_tree)$spectrum.type <- "not_assembled"
+spectraData(ftms_msn_tree_best)$spectrum.type <- "not_assembled"
 ```
 
-Concatenate both spectra objects with "assembled" and "not_assembled" object.
+Concatenate both spectra objects with "assembled" and "not_assembled" into one
+spectra object.
 ```{r}
-ftms_one_merged_tree <- setBackend(ftms_one_merged_tree,  MsBackendMemory())
+ftms_one_merged_tree <- setBackend(ftms_msn_tree_best,  MsBackendMemory())
 ftms_assembled_herba <- setBackend(ftms_assembled_herba,  MsBackendMemory())
 
 # Concatenate
@@ -269,12 +285,15 @@ ftms_all_herba <- concatenateSpectra(ftms_one_merged_tree, ftms_assembled_herba)
 
 peaksData(ftms_all_herba)[[1,]]            
 
-head(spectraData(ftms_all_herba), 3)
+head(spectraData(ftms_all_herba))
+```
+save locally the object that contains both spectrum types
+```{r}
+save(ftms_all_herba, file = here("data", "ftms_all_herba.RData"))
 ```
 
 
-
-Create sql database of this feature
+#Create sql database for this feature
 ```{r}
 dbfile <- here("data", "herba_ftneg.sqlite")
 createSpectraSQLite(
@@ -298,18 +317,20 @@ createSpectraSQLite(
 ```
 
 
-Add herbacytine to dynlib sql
+# Add the herbacytine feature to Dynlib sql
 ```{r}
 dbf0 <- here("data","DYL_FLAX_FTMSneg.sqlite")
 db <- dbConnect(SQLite(), dbf0)
 ```
 
+retreive the maximum expid in the global database before adding the new feature.
 ```{r}
 dbGetQuery(db, "
   SELECT MAX(CAST(expid AS INTEGER)) AS max_expid
   FROM experiment
 ")
 ```
+#Add the new experiment to the existing Dynlib
 ```{r}
 # Create new database
 dbf <- here("data", "DYL_herba_FTMSneg.sqlite")
@@ -322,13 +343,13 @@ merge_databases(
   output_db = here("data","DYL_herba_FTMSneg.sqlite")
 )
 ```
+## connect to the merged database
 ```{r}
 dbf <- here("data", "DYL_herba_FTMSneg.sqlite")
 con_merged <- dbConnect(RSQLite::SQLite(), dbf)
 ```
 
-
-
+Retreive the new maximum expid (it should be the old expid + 1)
 ```{r}
 dbGetQuery(con_merged, "
   SELECT MAX(CAST(expid AS INTEGER)) AS max_expid
@@ -336,7 +357,7 @@ dbGetQuery(con_merged, "
 ")
 ```
 ```{r}
-dbGetQuery(con_merged, "Select * from experiment where expid = '266' or expid = '267' or expid = '268' or expid = '269' ")
+dbGetQuery(con_merged, "Select * from experiment where expid = '266' or expid = '267' ")
 ```
 
 ```{r}
