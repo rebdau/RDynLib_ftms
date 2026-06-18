@@ -31,10 +31,7 @@
 #' 
 #' @export
 merge_databases <- function(main_db, add_db, output_db) {
-  
-  library(DBI)
-  library(RSQLite)
-  library(dplyr)
+
   
   if (file.exists(output_db))
     file.remove(output_db)

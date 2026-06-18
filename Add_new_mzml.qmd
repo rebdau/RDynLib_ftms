@@ -356,9 +356,6 @@ dbGetQuery(con_merged, "
   FROM experiment
 ")
 ```
-```{r}
-dbGetQuery(con_merged, "Select * from experiment where expid = '266' or expid = '267' ")
-```
 
 ```{r}
 add_db <- here("data","herba_ftneg.sqlite")
@@ -366,4 +363,54 @@ con_herba <- dbConnect(RSQLite::SQLite(), add_db)
 dbGetQuery(con_herba, "Select * from experiment ")
 ```
 
-
+```{r}
+dbExecute(
+    con_merged,
+    "
+    UPDATE experiment
+    SET
+        date = '01/06/2015',
+        user = 'ament',
+        machine = 'LTQ_Orbitrap',
+        column = 'Waters_Sunfire_C18',
+        mstype = 'FT',
+        buffera = 'water_AA',
+        bufferb = 'ACN',
+        gradient_time = '65(95-95in2_to82at32_to76at60min__to0at65minat300_40gr) min',
+        source = 'ESI',
+        mode = 'neg',
+        species = 'Linum usitatissimum',
+        tissue = 'seed_integument',
+        ce = '35',
+        meta = 'Linea_varieties_S1_S9'
+    WHERE expid = 266
+    "
+)
+```
+```{r}
+dbExecute(
+    con_merged,
+    "
+    UPDATE experiment
+    SET
+        date = '01/06/2015',
+        user = 'rebdau',
+        machine = 'LTQ_Orbitrap',
+        column = 'Waters_Sunfire_C18',
+        mstype = 'FT',
+        buffera = 'water_AA',
+        bufferb = 'ACN',
+        gradient_time = '65(95-95in2_to82at32_to76at60min__to0at65minat300_40gr) min',
+        source = 'ESI',
+        mode = 'neg',
+        species = 'Standards',
+        tissue = 'seed_integument',
+        ce = '35',
+        meta = 'Linea_varieties_S1_S9'
+    WHERE expid = 267
+    "
+)
+```
+```{r}
+dbGetQuery(con_merged, "Select * from experiment where expid = '266' or expid = '267' ")
+```
