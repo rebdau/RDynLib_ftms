@@ -25,6 +25,5 @@ The pages below provide step-by-step instructions and reproducible code:
 
 -   [Centroiding](centroiding.qmd) – Centroiding CID spectra if they are in profile mode
 -   [Preprocessing](ftms_preprocessing.qmd) – Peak picking and retention time alignment
--   [Select Spectral Trees](ftms_filtering.qmd) – Select a single best representative spectral tree per feature, to archive in teh database
--   [Flatten Spectral Trees into pseudo-MS/MS spectra](ftms_assembled.qmd) – Generate pseudo-MS/MS spectra, to archive in the database
--   [Database Creation](ftmsneg_flax_sql.qmd) – Build and populate the SQL database
+-   [Select Spectral Trees](ftms_filtering.qmd) – Select a single best representative spectral tree per feature, to archive in the database, and Generate pseudo-MS/MS spectra, to archive in the database
+-   [Database Creation](flax_ftneg_SQL.qmd) – Build and populate the SQL database
