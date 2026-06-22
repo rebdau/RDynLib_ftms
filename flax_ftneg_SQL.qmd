@@ -1,0 +1,208 @@
+---
+title: "Create an SQL database with spectral data, feature data, and experiment metadata"
+format:
+  html:
+    toc: true
+    self-contained: true
+author:
+  - name: Ahlam Mentag
+  - name: Johannes Rainer
+  - name: Rebecca Dauwe
+execute:
+  warning: false
+  error: false
+  message: false
+editor: visual
+---
+
+## Introduction
+
+This Quarto document describes the workflow used to create an SQL database containing spectral data, feature data, and experiment metadata for the FTMS negative-mode flax dataset using RDynlib package functions.
+
+# Required packages
+
+```{r}
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(RDynlib)
+load_all()
+```
+
+Merge the two spectra object with two spectrum types
+
+```{r}
+# Load Spectra objects
+load("data/ftms_all.RData")
+dbfile <- here("data", "ftms_flax_neg.sqlite")
+```
+
+```{r}
+createSpectraSQLite(
+    sps = ftms_all,
+    dbfile = dbfile,
+    date = "01/06/2015",
+    user = "ament",
+    machine = "LTQ_Orbitrap",
+    mode = "neg",
+    tissue = "RILs",
+    mstype = "FT",
+    column = "Waters_Sunfire_C18",
+    buffera = "water_AA",
+    bufferb = "ACN",
+    gradient_time = "65(95-95in2_to82at32_to76at60min__to0at65minat300_40gr) min",
+    source = "ESI",
+    species = "Linum usitatissimum",
+    ce = 35,
+    meta = "Linea_varieties_S1_S9"
+)
+```
+
+
+```{r}
+con <- DBI::dbConnect(RSQLite::SQLite(), dbfile)
+
+DBI::dbListTables(con)
+
+```
+
+```{r}
+DBI::dbReadTable(con, "experiment")
+```
+
+```{r}
+DBI::dbGetQuery(con, "SELECT COUNT(*) FROM ms_compound")
+```
+
+```{r}
+DBI::dbGetQuery(con, "SELECT * FROM ms_compound LIMIT 5")
+```
+
+```{r}
+DBI::dbGetQuery(con, "SELECT COUNT(*) FROM msms_spectrum")
+```
+
+```{r}
+DBI::dbGetQuery(con, "SELECT * FROM msms_spectrum LIMIT 5")
+```
+```{r}
+DBI::dbGetQuery(con, "
+SELECT expid, COUNT(*) 
+FROM ms_compound 
+GROUP BY expid
+")
+```
+
+```{r}
+DBI::dbGetQuery(con, "
+SELECT COUNT(*)
+FROM msms_spectrum
+WHERE compound_id IS NULL
+")
+```
+
+```{r}
+DBI::dbGetQuery(con, "
+SELECT spectrum_id, COUNT(*) AS n_peaks
+FROM msms_spectrum_peak
+GROUP BY spectrum_id
+ORDER BY n_peaks DESC
+LIMIT 10
+")
+```
+
+```{r}
+DBI::dbGetQuery(con, "SELECT * FROM msms_spectrum_peak LIMIT 5")
+
+```
+
+```{r}
+DBI::dbGetQuery(con, "
+SELECT MIN(precursor_mz), MAX(precursor_mz)
+FROM msms_spectrum
+")
+```
+
+```{r}
+DBI::dbGetQuery(con, "
+SELECT MIN(rtime), MAX(rtime)
+FROM msms_spectrum
+")
+```
+
+```{r}
+DBI::dbGetQuery(con, "
+SELECT 
+  (SELECT COUNT(*) FROM ms_compound) AS compounds,
+  (SELECT COUNT(*) FROM msms_spectrum) AS spectra,
+  (SELECT COUNT(*) FROM msms_spectrum_peak) AS peaks
+")
+```
+
+```{r}
+DBI::dbGetQuery(con, "
+SELECT COUNT(*) 
+FROM msms_spectrum
+WHERE compound_id IS NULL
+")
+```
+
+Add Feature matrix to the database
+```{r}
+add_FeatureMatrix_SQLite(
+  dbfile = dbfile,
+  xcms_exp = ftms
+)
+```
+
+Verification:
+```{r}
+DBI::dbGetQuery(con, "
+SELECT * 
+FROM feature_matrix
+Limit 5
+")
+```
+
+
+Add RILs to Dynlib sql database
+```{r}
+# Create new database
+dbf <- here("data", "DYL_FLAX_FTMSneg.sqlite")
+# merge
+merge_databases(
+  main_db   = here("data","DyLib_FTMS_neg_or.sqlite"),
+  add_db    = here("data","ftms_flax_neg.sqlite"),
+  output_db = dbf
+)
+```
+
+Next, we verify if the experimznt has been well added to the global database
+```{r}
+con_merged <- dbConnect(RSQLite::SQLite(), dbf)
+```
+
+the new experiment number of RILs is 267 
+```{r}
+dbGetQuery(con_merged, "
+  SELECT MAX(CAST(expid AS INTEGER)) AS max_expid
+  FROM experiment
+")
+```
+
+```{r}
+dbGetQuery(con_merged, "Select * from experiment where expid = 266")
+```
+
+```{r}
+dbGetQuery(con_merged, "Select * from ms_compound where expid = 266 LIMIT 10")
+```
+
+```{r}
+dbGetQuery(con_merged, "Select * from msms_spectrum where compound_id = 100912")
+```
+
+```{r}
+dbGetQuery(con_merged, "Select * from msms_spectrum_peak where spectrum_id = 202203")
+```
+
