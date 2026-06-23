@@ -45,7 +45,7 @@ createSpectraSQLite(
     user = "ament",
     machine = "LTQ_Orbitrap",
     mode = "neg",
-    tissue = "RILs",
+    tissue = "Flax",
     mstype = "FT",
     column = "Waters_Sunfire_C18",
     buffera = "water_AA",
