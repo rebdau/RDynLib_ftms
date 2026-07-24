@@ -240,7 +240,7 @@ Enrichment of the selected trees
 
 ```{r}
 #source("best_ftms_tree_pipeline.R")
-ftms_final <- enrich_ms3_ms4(
+ftms_final <- enrich_msntree(
   ftms_best = res$ftms_best,
   sd_filtered = res$sd_filtered
 )
@@ -248,6 +248,29 @@ ftms_final <- enrich_ms3_ms4(
 length(unique(unlist(ftms_final$feature_id)))
 length(unique(unlist(ftms_final$MergedMSntreeID)))
 length(unique(unlist(ftms_final$MSntreeID)))
+```
+
+filter out all peaks that have intensity below 1% (or 0.5%) of the base peak
+
+```{r}
+filter_basepeak_intensity <- function(x, threshold = 0.01) {
+  
+  if (nrow(x) == 0)
+    return(x)
+  
+  base_peak <- max(x[, 2], na.rm = TRUE)
+  
+  x[x[, 2] >= threshold * base_peak, , drop = FALSE]
+}
+```
+
+```{r}
+ftms_final <- addProcessing(
+  ftms_final,
+  function(x) {
+    filter_basepeak_intensity(x, threshold = 0.01)
+  }
+)
 ```
 
 Get max MS level per tree
@@ -326,7 +349,7 @@ ftms_one_merged_tree <- ftms_final
 save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.RData"))
 ```
 
-`
+\`
 
 ```{r}
 spectraData(ftms_one_merged_tree)
@@ -347,11 +370,12 @@ table(final_levels)
 ```
 
 ```{r}
-ftms_assembled <- assembleSpectraTree(ftms_one_merged_tree)
+ftms_assembled <- msntree_to_pseudoMS2(ftms_one_merged_tree)
 ftms_assembled
 unique(spectraData(ftms_assembled)$msLevel)
 
 ```
+
 Add "not_assembled" label to the initial object with separated spectrums
 
 ```{r}
@@ -374,11 +398,9 @@ head(spectraData(ftms_all), 3)
 
 ```{r}
 save(ftms_all, file = file.path(pth, "data", "ftms_all.RData"))
-````
 
 
 # Session information
 
-```{r}
 sessionInfo()
 ```

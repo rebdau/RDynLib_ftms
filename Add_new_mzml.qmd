@@ -220,31 +220,66 @@ table(table(ftms_msn_tree_herba$MSntreeID))
 ```
 #Select single best MSn spectral tree per feature
 
-Next we select one most representative tree per feature based on  the intensity of the precursor
+Select the feature with the highest basePeakIntensity
+```{r}
+## Metadata
+spd <- spectraData(ftms_msn_tree_herba)
 
-Keep only trees (vMSntreeIDv) whose msLevel == 2 spectrum precursor intensity is in the top 75%.
+## Find the MS2 spectrum with the highest base peak intensity
+ms2 <- spd$msLevel == 2
+
+best_tree <- spd$MSntreeID[
+  which.max(spd$basePeakIntensity[ms2])
+]
+
+## Keep the complete tree
+best_ft <- ftms_msn_tree_herba[
+  spd$MSntreeID == best_tree
+]
+spectraData(best_ft)
+```
+
+Enrich the tree
+```{r}
+frag_dt <- as.data.frame(spectraData(ftms_msn_tree_herba))
+ftms_final <- enrich_msntree(
+  ftms_best = best_ft,
+  sd_filtered = frag_dt
+)
+```
+```{r}
+spectraData(ftms_final)
+```
+filter out all peaks that have intensity below 1% (or 0.5%) of the base peak
 
 ```{r}
-sd <- as.data.frame(spectraData(ftms_msn_tree_herba))
-ms2 <- subset(sd, msLevel == 2)
-threshold <- quantile(ms2$precursorIntensity, 0.25, na.rm = TRUE)
-strong_MSntrees <- unique(ms2$MSntreeID[ms2$precursorIntensity > threshold])
-sd_filtered <- subset(sd, MSntreeID %in% strong_MSntrees)
-
-length(unique(sd_filtered$feature_id))
-length(unique(sd$feature_id))
-removed.features <- length(unique(sd$feature_id)) - length(unique(sd_filtered$feature_id))
-message(removed.features, " features were removed after selecting only spectra with top 75% precursor intensity.")
-message(length(unique(sd_filtered$feature_id))," of the ", length(unique(sd$feature_id)), " features remain.")
-sd_filtered$MSntreeID
+filter_basepeak_intensity <- function(x, threshold = 0.01) {
+  
+  if (nrow(x) == 0)
+    return(x)
+  
+  base_peak <- max(x[, 2], na.rm = TRUE)
+  
+  x[x[, 2] >= threshold * base_peak, , drop = FALSE]
+}
 ```
-Filter the spectra object
 
 ```{r}
-best_MSntreeIDs <- sd_filtered$MSntreeID
-ftms_msn_tree_best <- ftms_msn_tree_herba[ which(spectraData(ftms_msn_tree_herba)$MSntreeID %in% best_MSntreeIDs) ]
-spectraData(ftms_msn_tree_best)
+ftms_msn_tree_best <- addProcessing(
+  ftms_final,
+  function(x) {
+    filter_basepeak_intensity(x, threshold = 0.01)
+  }
+)
 ```
+
+```{r}
+cbind(
+  before = lengths(peaksData(ftms_final)),
+  after  = lengths(peaksData(ftms_msn_tree_best))
+)
+```
+
 
 Now the spectra object contains just one tree. 
 
@@ -295,24 +330,25 @@ save(ftms_all_herba, file = here("data", "ftms_all_herba.RData"))
 
 #Create sql database for this feature
 ```{r}
+load("data/ftms_all_herba.RData")
 dbfile <- here("data", "herba_ftneg.sqlite")
 createSpectraSQLite(
     sps = ftms_all_herba,
     dbfile = dbfile,
-    date = "18/6/2025",
-    user = "herbacytine",
-    machine = "FTMS",
-    mode = "neg",
-    tissue = "flax",
-    mstype = NULL,
-    column = NULL,
-    buffera = NULL,
-    bufferb = NULL,
-    gradient_time = NULL,
-    source = NULL,
-    species = NULL,
-    ce = NULL,
-    meta = NULL
+    date = '01/06/2015',
+    user = 'ament',
+    machine = 'LTQ_Orbitrap',
+    column = 'Waters_Sunfire_C18',
+    mstype = 'FT',
+    buffera = 'water_AA',
+    bufferb = 'ACN',
+    gradient_time = '65(95-95in2_to82at32_to76at60min__to0at65minat300_40gr) min',
+    source = 'ESI',
+    mode = 'neg',
+    species = 'Linum usitatissimum',
+    tissue = 'seed_integument',
+    ce = '35',
+    meta = 'Linea_varieties_S1_S9'
 )
 ```
 
@@ -333,19 +369,19 @@ dbGetQuery(db, "
 #Add the new experiment to the existing Dynlib
 ```{r}
 # Create new database
-dbf <- here("data", "DYL_herba_FTMSneg.sqlite")
-con_merged <- dbConnect(RSQLite::SQLite(), dbf)
+#dbf <- here("data", "DYL_herba2_FTMSneg.sqlite")
+#con_merged <- dbConnect(RSQLite::SQLite(), dbf)
 
 # merge
 merge_databases(
   main_db   = here("data","DYL_FLAX_FTMSneg.sqlite"),
   add_db    = here("data","herba_ftneg.sqlite"),
-  output_db = here("data","DYL_herba_FTMSneg.sqlite")
+  output_db = here("data","DYL_flax_herba_FTMSneg.sqlite")
 )
 ```
 ## connect to the merged database
 ```{r}
-dbf <- here("data", "DYL_herba_FTMSneg.sqlite")
+dbf <- here("data", "DYL_flax_herba_FTMSneg.sqlite")
 con_merged <- dbConnect(RSQLite::SQLite(), dbf)
 ```
 
@@ -387,6 +423,8 @@ dbExecute(
     "
 )
 ```
+
+
 ```{r}
 dbExecute(
     con_merged,
@@ -411,6 +449,51 @@ dbExecute(
     "
 )
 ```
+
+
 ```{r}
 dbGetQuery(con_merged, "Select * from experiment where expid = '266' or expid = '267' ")
 ```
+
+Fill the herbacetin data by the EnterName() function:
+
+```{r}
+EnterName_SQL(dbf, 101307)
+```
+
+```{r}
+dbGetQuery(con_merged, "Select * from ms_compound where expid = '267' ")
+``` 
+
+Change the "spectrum_type" of the existing dynlib from "NA" to "not_assembled":
+```{r}
+DBI::dbExecute(
+  con_merged,
+  "UPDATE msms_spectrum
+   SET spectrum_type = 'not_assembled'
+   WHERE spectrum_type IS NULL"
+)
+```
+
+Verification:
+```{r}
+DBI::dbGetQuery(
+  con_merged,
+  "SELECT spectrum_type FROM msms_spectrum"
+)
+```
+Convert the sql database to spectra object:
+```{r}
+dbf <- here("data", "DYL_flax_herba_FTMSneg.sqlite")
+dy_sps <- sql_to_spectra(dbf)
+```
+
+```{r}
+MSnplot_SQL(dbf, 101307)
+```
+
+
+```{r}
+MSnplot_SQL(dbf, 101280)
+```
+

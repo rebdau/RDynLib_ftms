@@ -58,7 +58,6 @@ createSpectraSQLite(
 )
 ```
 
-
 ```{r}
 con <- DBI::dbConnect(RSQLite::SQLite(), dbfile)
 
@@ -85,6 +84,7 @@ DBI::dbGetQuery(con, "SELECT COUNT(*) FROM msms_spectrum")
 ```{r}
 DBI::dbGetQuery(con, "SELECT * FROM msms_spectrum LIMIT 5")
 ```
+
 ```{r}
 DBI::dbGetQuery(con, "
 SELECT expid, COUNT(*) 
@@ -148,6 +148,7 @@ WHERE compound_id IS NULL
 ```
 
 Add Feature matrix to the database
+
 ```{r}
 add_FeatureMatrix_SQLite(
   dbfile = dbfile,
@@ -156,6 +157,7 @@ add_FeatureMatrix_SQLite(
 ```
 
 Verification:
+
 ```{r}
 DBI::dbGetQuery(con, "
 SELECT * 
@@ -164,8 +166,8 @@ Limit 5
 ")
 ```
 
-
 Add RILs to Dynlib sql database
+
 ```{r}
 # Create new database
 dbf <- here("data", "DYL_FLAX_FTMSneg.sqlite")
@@ -178,11 +180,13 @@ merge_databases(
 ```
 
 Next, we verify if the experimznt has been well added to the global database
+
 ```{r}
 con_merged <- dbConnect(RSQLite::SQLite(), dbf)
 ```
 
-the new experiment number of RILs is 267 
+the new experiment number of RILs is 267
+
 ```{r}
 dbGetQuery(con_merged, "
   SELECT MAX(CAST(expid AS INTEGER)) AS max_expid
@@ -205,4 +209,3 @@ dbGetQuery(con_merged, "Select * from msms_spectrum where compound_id = 100912")
 ```{r}
 dbGetQuery(con_merged, "Select * from msms_spectrum_peak where spectrum_id = 202203")
 ```
-

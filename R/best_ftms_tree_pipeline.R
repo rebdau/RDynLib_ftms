@@ -248,7 +248,7 @@ add_ms3_ms4_candidates <- function(sd_best, sd_filtered, ms4_map) {
 #'
 #' @return Spectra object enriched
 #' @author Ahlam Mentag, Rebecca Dauwe
-enrich_ms3_ms4 <- function(ftms_best, sd_filtered) {
+enrich_msntree <- function(ftms_best, sd_filtered) {
   
   library(dplyr)
   
