@@ -488,6 +488,16 @@ dbf <- here("data", "DYL_flax_herba_FTMSneg.sqlite")
 dy_sps <- sql_to_spectra(dbf)
 ```
 
+Add accessions to the database with specefic initials for flax and herbacetin 
+experiments, the other experiments would have the first two letters of the user
+column from experiment table as initials.
+```{r}
+add_accessions(dbf, 
+                initials_overrides = c("266" = "RD",
+                                    "267" = "RD"))
+```
+
+
 ```{r}
 MSnplot_SQL(dbf, 101307)
 ```
