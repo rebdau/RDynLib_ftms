@@ -376,10 +376,10 @@ unique(spectraData(ftms_assembled)$msLevel)
 
 ```
 
-Add "not_assembled" label to the initial object with separated spectrums
+Add "individual" label to the initial object with separated spectrums
 
 ```{r}
-spectraData(ftms_one_merged_tree)$spectrum.type <- "not_assembled"
+spectraData(ftms_one_merged_tree)$spectrum.type <- "individual"
 ```
 
 We concatenate the spectral tree and pseudo-MS² spectra generated above. First switch the storage backend of the Spectra objects to in-memory backend, which allows Efficient access to the spectral data since some backends may not support direct concatenation. Then combine them into a single Spectra object ftms_all The peaks and metadata of the concatenated spectra are then displayed for inspection.

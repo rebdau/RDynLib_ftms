@@ -137,14 +137,6 @@ quantile(unname(pks[, "rtmax"] - pks[, "rtmin"]))
 quantile(unname(pks[, "mzmax"] - pks[, "mzmin"]))
 ```
 
-#Group chromPeaks
-```{r}
-pdp <- PeakDensityParam(sampleGroups = sampleData(ftms)$sample_id,
-                        bw = 6, minFraction = 0.3, binSize = 0.1,
-                        ppm = 10)
-
-ftms <- groupChromPeaks(ftms, param = pdp)
-```
 
 Change the backend to MsBackendMemory for further analysis
 ```{r}
@@ -247,6 +239,7 @@ ftms_final <- enrich_msntree(
   sd_filtered = frag_dt
 )
 ```
+
 ```{r}
 spectraData(ftms_final)
 ```
@@ -295,7 +288,7 @@ from RDynlib package:
 
 ```{r}
 
-ftms_assembled_herba <- assembleSpectraTree(ftms_msn_tree_best)
+ftms_assembled_herba <- msntree_to_pseudoMS2(ftms_msn_tree_best)
 
 ftms_assembled_herba
 unique(spectraData(ftms_assembled_herba)$msLevel)
@@ -306,10 +299,10 @@ spectraData(ftms_assembled_herba)
 ```
 Add "not_assembled" label to the initial object with separated spectrums 
 ```{r}
-spectraData(ftms_msn_tree_best)$spectrum.type <- "not_assembled"
+spectraData(ftms_msn_tree_best)$spectrum.type <- "individual"
 ```
 
-Concatenate both spectra objects with "assembled" and "not_assembled" into one
+Concatenate both spectra objects with "pseudo_MS2" and "individual" into one
 spectra object.
 ```{r}
 ftms_one_merged_tree <- setBackend(ftms_msn_tree_best,  MsBackendMemory())
@@ -465,12 +458,12 @@ EnterName_SQL(dbf, 101307)
 dbGetQuery(con_merged, "Select * from ms_compound where expid = '267' ")
 ``` 
 
-Change the "spectrum_type" of the existing dynlib from "NA" to "not_assembled":
+Change the "spectrum_type" of the existing dynlib from "NA" to "individual":
 ```{r}
 DBI::dbExecute(
   con_merged,
   "UPDATE msms_spectrum
-   SET spectrum_type = 'not_assembled'
+   SET spectrum_type = 'individual'
    WHERE spectrum_type IS NULL"
 )
 ```
