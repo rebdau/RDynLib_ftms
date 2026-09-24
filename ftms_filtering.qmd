@@ -236,18 +236,99 @@ res <- best_tree_pipeline(ftms_obj)
 res$best_trees |> nrow()
 ```
 
+```{r}
+ftms_best <- res$ftms_best
+```
+
 Enrichment of the selected trees
 
 ```{r}
 #source("best_ftms_tree_pipeline.R")
-ftms_final <- enrich_msntree(
+ftms_final <- enrich_ms3_ms4(
   ftms_best = res$ftms_best,
-  sd_filtered = res$sd_filtered
+  sd_filtered = res$sd_filtered,
+  ftms_msn_tree = ftms_msn_tree
 )
+
+# Check enrichment
+length(res$ftms_best)
+length(ftms_final)
+
+# Check the number of merged trees
+length(unique(ftms_final$MergedMSntreeID))
+
+# Compare MS levels
+table(Spectra::msLevel(res$ftms_best))
+table(Spectra::msLevel(ftms_final))
 
 length(unique(unlist(ftms_final$feature_id)))
 length(unique(unlist(ftms_final$MergedMSntreeID)))
 length(unique(unlist(ftms_final$MSntreeID)))
+```
+
+statistics
+
+```{r}
+library(dplyr)
+
+# Average number of spectra per feature before and after enrichment
+comparison <- data.frame(
+  stage = c("Before enrichment", "After enrichment"),
+  n_features = c(
+    length(unique(ftms_best$feature_id)),
+    length(unique(ftms_final$feature_id))
+  ),
+  n_spectra = c(
+    length(ftms_best),
+    length(ftms_final)
+  )
+) |>
+  mutate(
+    mean_spectra = round(n_spectra / n_features, 2)
+  )
+
+print(comparison)
+```
+
+Average number of MS2, MS3 and MS4 spectra per feature
+
+```{r}
+# Function to calculate averages by MS level
+average_ms_levels <- function(sps) {
+
+  n_features <- length(unique(sps$feature_id))
+
+  data.frame(
+    msLevel = 2:4,
+    n_spectra = as.integer(
+      table(factor(Spectra::msLevel(sps), levels = 2:4))
+    )
+  ) |>
+    mutate(
+      mean_spectra = round(n_spectra / n_features, 2)
+    )
+}
+
+# Before and after enrichment
+before <- average_ms_levels(ftms_best)
+after  <- average_ms_levels(ftms_final)
+
+# Comparison
+comparison_ms <- before |>
+  rename(
+    n_before = n_spectra,
+    mean_before = mean_spectra
+  ) |>
+  left_join(
+    after |>
+      rename(
+        n_after = n_spectra,
+        mean_after = mean_spectra
+      ),
+    by = "msLevel"
+  )
+
+print(comparison_ms)
 ```
 
 filter out all peaks that have intensity below 1% (or 0.5%) of the base peak
