@@ -33,6 +33,7 @@ library(Spectra)
 library(readxl)
 library(IRanges)
 library(S4Vectors)
+library(here)
 #library(RDynLib)
 register(SerialParam())
 pth <- getwd()
@@ -51,7 +52,10 @@ class(ftms)
 ```
 
 ```{r}
-save(ftms, file = "C:/Users/ament/Desktop/Github/RDynLib_ftms/data/ftms.RData")
+save(
+  ftms,
+  file = here("data", "ftms.RData")
+)
 ```
 
 ```{r}
@@ -427,7 +431,10 @@ Now we save the resulting ftms spectra object to a local directory.
 
 ```{r, eval=FALSE}
 ftms_one_merged_tree <- ftms_final
-save(ftms_one_merged_tree, file = file.path(pth, "data", "ftms_one_merged_tree.RData"))
+save(
+  ftms_one_merged_tree,
+  file = here("data", "ftms_one_merged_tree.RData")
+)
 ```
 
 \`
@@ -478,8 +485,10 @@ head(spectraData(ftms_all), 3)
 ```
 
 ```{r}
-save(ftms_all, file = file.path(pth, "data", "ftms_all.RData"))
-
+save(
+  ftms_all,
+  file = here("data", "ftms_all.RData")
+)
 
 # Session information
 

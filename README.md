@@ -13,9 +13,8 @@ This folder contains the following files:
 - [ftms_filtering.qmd](ftms_filtering.qmd): in this file we filter the ftms data
   to keep one tree per feature.
 
-- [ftms_assembled.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/ftms_assembled.qmd) : In this quarto document
- we create an assembled MS/MS data from ftms object that contains one tree
- per feature created in the ftms_filtering.qmd file.
+- [Add_new_mzml.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/Add_new_mzml.qmd) : this workflow demonstrate how to process and add 
+  a single mzml file to an existing sql database.
 
 - [ftmsneg_flax_sql.qmd](https://github.com/rebdau/RDynLib_ftms/blob/main/ftmsneg_flax_sql.qmd) : 
  In this Quarto document, we create an SQL database of flax FTMS negative mode 
@@ -27,5 +26,5 @@ This folder contains the following files:
 1. *centroiding.qmd*
 2. *ftms_preprocessing.qmd*
 3. *ftms_filtering.qmd*
-4. *ftms_assembled.qmd*
 4. *ftmsneg_flax_sql.qmd*
+5. *Add_new_mzml.qmd*
