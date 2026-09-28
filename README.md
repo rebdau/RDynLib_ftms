@@ -16,7 +16,7 @@ This folder contains the following files:
 - [Add_new_mzml.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/Add_new_mzml.qmd) : this workflow demonstrate how to process and add 
   a single mzml file to an existing sql database.
 
-- [ftmsneg_flax_sql.qmd](https://github.com/rebdau/RDynLib_ftms/blob/main/ftmsneg_flax_sql.qmd) : 
+- [flax_ftneg_SQL.qmd](https://github.com/rebdau/RDynLib_ftms/blob/ahlam/flax_ftneg_SQL.qmd) : 
  In this Quarto document, we create an SQL database of flax FTMS negative mode 
  data using the objects produced in ftms_filtering.qmd and ftms_assembled.qmd. 
  The database contains two types of spectra: assembled and separated.
