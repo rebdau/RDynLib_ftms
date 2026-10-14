@@ -27,6 +27,9 @@
 #' @param mzerr `Numeric(1)` mass tolerance (in Da) used to match precursor and
 #'   product ions. Default it is configured for ftms data
 #'   \code{0.01}, for qtof data the user could set it to \code{0.015}.
+#'   
+#' @param spectrum_type `Character(1)` string giving the spectrum type to use,
+#'  if NULL then the parameter is not taking into account.
 #'
 #' @param cspp `Character(1)` string giving the path to the CSPP configuration 
 #'   file. This file defines the conversion types, mass differences,
@@ -51,145 +54,264 @@
 #' @author Ahlam Mentag
 #' 
 #' @export
-cspp.tot_SQL <- function(sql_path, expid, mzerr = 0.015,
+cspp.tot_SQL <- function(sql_path, expid,
+                         mzerr = 1,
                          cspp = "cspp.txt",
-                         peakwidth = NULL,
-                         IntThres = 100) {
+                         peakwidth = 0.2,
+                         IntThres = 0,
+                         mz_tol = 0.3,
+                         dot_thresh = 0,
+                         min_common = 0,
+                         spectrum_type = NULL,
+                         charge_file = NULL,
+                         reset = TRUE,
+                         verbose = TRUE) {
   
-  if (is.null(peakwidth)) peakwidth <- 0.2
+  log <- function(...) if (verbose) message(sprintf(...))
   
-  data_con <- dbConnect(SQLite(), sql_path)
-  on.exit(dbDisconnect(data_con), add = TRUE)
+  con <- dbConnect(SQLite(), sql_path)
+  on.exit(dbDisconnect(con), add = TRUE)
   
-  # Load compounds
-  inp.x <- dbGetQuery(
-    data_con,
-    sprintf(
-      "SELECT compound_id, mass_measured, retention_time
-       FROM ms_compound
-       WHERE expid = %d", expid
-    )
-  )
+  inp.x <- as.data.table(dbGetQuery(con, sprintf("
+    SELECT compound_id, mass_measured, retention_time
+    FROM ms_compound
+    WHERE expid = %d
+  ", expid)))
   
-  if (nrow(inp.x) == 0)
-    stop("No compounds found for expid = ", expid)
+  inp.x <- inp.x[!is.na(mass_measured)]
+  inp.x[, compound_id := as.character(compound_id)]
   
-  inp.x <- inp.x[order(inp.x$mass_measured), ]
+  log("Loaded MS1 compounds: %d", nrow(inp.x))
   
-  # Load compound_add
-  comp_add <- dbReadTable(data_con, "compound_add")
-  
-  # Load conversion table
-  conv.table <- fread(cspp, header = TRUE, sep = "\t")
-  
-  conver <- data.frame(
-    conv.type  = as.character(conv.table[[1]]),
-    conv.mz    = as.numeric(conv.table[[3]]),
-    conv.direc = as.integer(conv.table[[5]]),
-    conv.colmn = as.integer(conv.table[[6]]),
-    stringsAsFactors = FALSE
-  )
-  
-  # LOAD ALL MS2 ONCE
-  message("Loading all MS2 spectra into memory...")
-  
-  spec_df <- dbGetQuery(
-    data_con,
-    "
-    SELECT s.spectrum_id,
-           s.compound_id,
-           s.precursor_mz
-    FROM msms_spectrum s
-    WHERE s.ms_level = 2
-      AND s.spectrum_id = (
-          SELECT MIN(s2.spectrum_id)
-          FROM msms_spectrum s2
-          WHERE s2.compound_id = s.compound_id
-            AND s2.ms_level = 2
-      )
-    "
-  )
-  
-  if (nrow(spec_df) == 0)
-    stop("No MS2 spectra found.")
-  
-  # peak_df <- dbGetQuery(
-  #   data_con,
-  #   "SELECT spectrum_id, mz, intensity FROM msms_spectrum_peak"
-  # )
-  
-  
-  peak_df <- DBI::dbGetQuery(
-    data_con,
-    sprintf("
-      SELECT p.spectrum_id, p.mz, p.intensity
-      FROM msms_spectrum_peak p
-      INNER JOIN msms_spectrum s
-        ON p.spectrum_id = s.spectrum_id
-      INNER JOIN ms_compound c
-        ON s.compound_id = c.compound_id
-      WHERE c.expid = %d
-    ", expid)
-  )
-  
-  ms2_df <- merge(peak_df, spec_df, by = "spectrum_id")
-  ms2_df <- ms2_df[ms2_df$intensity >= IntThres, ]
-  
-  ms2_split <- split(ms2_df, ms2_df$compound_id)
-  
-  message("Loaded MS2 for ", length(ms2_split), " compounds.")
-  
-  
-  for (k in seq_len(nrow(conver))) {
+  if (!is.null(charge_file)) {
     
-    message("Processing conversion: ", k, "/", nrow(conver))
+    charge_dt <- as.data.table(readxl::read_excel(charge_file))
+    charge_dt[, compound_id := as.character(compound_id)]
+    charge_dt[, doublecharged := tolower(trimws(as.character(doublecharged)))]
     
-    cspp.df <- conv.CSPP_SQL(
+    inp.x <- merge(
       inp.x,
-      mzdiff    = conver$conv.mz[k],
-      direc     = conver$conv.direc[k],
-      peakwidth = peakwidth,
-      mzerr     = mzerr,
-      ms2_split = ms2_split
+      charge_dt[, .(compound_id, doublecharged)],
+      by = "compound_id",
+      all.x = TRUE
     )
     
+    inp.x[, mass_measured := fifelse(
+      doublecharged %in% c("true", "t", "1"),
+      (mass_measured * 2) + 1.007276,
+      mass_measured
+    )]
     
-    if (is.null(cspp.df) || nrow(cspp.df) == 0) {
-      message("  No matches found for conversion ", conver$conv.type[k])
-      next
-    }
+    inp.x[, doublecharged := NULL]
     
-    if (ncol(cspp.df) < 14) {
-      warning("  Unexpected column structure for conversion ",
-              conver$conv.type[k], ". Skipping.")
-      next
-    }
-    
-    comp_add <- rank.cspp(cspp.df,
-                          conver$conv.colmn[k],
-                          comp_add)
+    log("Charge correction applied from Excel file.")
   }
   
-  # Ensure correct compound_id alignment
-  if (nrow(comp_add) <= nrow(inp.x)) {
-    comp_add$compound_id <- inp.x$compound_id[seq_len(nrow(comp_add))]
+  conv_raw <- fread(cspp)
+  
+  conv <- data.table(
+    type = trimws(conv_raw[[1]]),
+    mzdiff = as.numeric(conv_raw[[3]]),
+    direc = as.integer(conv_raw[[5]])
+  )
+  
+  conv[, col_name := type]
+  
+  if (is.null(spectrum_type)) {
+    
+    ## No filtering on spectrum_type
+    spec_df <- as.data.table(
+      dbGetQuery(
+        con,
+        "
+      SELECT spectrum_id, compound_id, precursor_mz
+      FROM msms_spectrum
+      WHERE ms_level = 2
+      "
+      )
+    )
+    
+    log("Spectrum type: all MS2 spectrum types")
+    
+  } else {
+    
+    ## Filter on the requested spectrum_type
+    spec_df <- as.data.table(
+      dbGetQuery(
+        con,
+        "
+      SELECT spectrum_id, compound_id, precursor_mz
+      FROM msms_spectrum
+      WHERE ms_level = 2
+        AND spectrum_type = ?
+      ",
+        params = list(spectrum_type)
+      )
+    )
+    
+    log("Spectrum type: %s", spectrum_type)
   }
   
-  # Rewrite table
-  message("Writing results to database...")
+  peak_df <- as.data.table(dbGetQuery(con, sprintf("
+    SELECT p.spectrum_id, p.mz, p.intensity, s.compound_id
+    FROM msms_spectrum_peak p
+    JOIN msms_spectrum s USING(spectrum_id)
+    WHERE p.intensity >= %d
+  ", IntThres)))
   
-  dbExecute(data_con, "DROP TABLE IF EXISTS compound_add_new")
-  dbWriteTable(data_con, "compound_add_new", comp_add)
+  ms2_df <- peak_df[spec_df, on = "spectrum_id", nomatch = 0]
+  ms2_list <- split(ms2_df, ms2_df$compound_id)
   
-  dbExecute(data_con, "DROP TABLE compound_add")
-  dbExecute(data_con, "ALTER TABLE compound_add_new RENAME TO compound_add")
+  log("Loaded MS2 compounds: %d", length(ms2_list))
   
-  message("Done.")
+  ## Create compound_add if it does not exist
+  
+  cspp_cols <- unique(conv$col_name)
+  
+  if (!DBI::dbExistsTable(con, "compound_add")) {
+    
+    log("Creating compound_add table.")
+    
+    comp_add <- data.table(
+      compound_id = unique(inp.x$compound_id)
+    )
+    
+    ## keep GNPS column
+    comp_add[, GNPS := NA_character_]
+    
+    ## create one column per conversion in the cspp file
+    for (cl in cspp_cols) {
+      comp_add[, (cl) := NA_character_]
+    }
+    
+    setcolorder(comp_add,
+                c("compound_id", "GNPS", cspp_cols))
+    
+  } else {
+    
+    comp_add <- as.data.table(dbReadTable(con, "compound_add"))
+    comp_add[, compound_id := as.character(compound_id)]
+    
+    ## add missing compounds
+    missing_ids <- setdiff(inp.x$compound_id,
+                           comp_add$compound_id)
+    
+    if (length(missing_ids) > 0) {
+      
+      log("Adding %d missing compound_ids to compound_add",
+          length(missing_ids))
+      
+      comp_add <- rbind(
+        comp_add,
+        data.table(compound_id = missing_ids),
+        fill = TRUE
+      )
+    }
+    
+    ## add missing conversion columns
+    missing_cols <- setdiff(cspp_cols,
+                            names(comp_add))
+    
+    if (length(missing_cols) > 0) {
+      
+      log("Adding missing columns to compound_add: %s",
+          paste(missing_cols, collapse = ", "))
+      
+      comp_add[, (missing_cols) := NA_character_]
+    }
+  }
+  
+  
+  
+  if (reset) {
+    for (col in conv$col_name) {
+      if (col %in% names(comp_add)) {
+        comp_add[, (col) := NA_character_]
+      }
+    }
+  }
+  
+  success <- character()
+  
+  for (k in seq_len(nrow(conv))) {
+    
+    log("Conversion %d/%d (%s)", k, nrow(conv), conv$type[k])
+    
+    res <- conv.CSPP_SQL(
+      inp.x,
+      mzdiff = conv$mzdiff[k],
+      direc = conv$direc[k],
+      peakwidth = peakwidth,
+      mzerr = mzerr,
+      ms2_split = ms2_list,
+      IntThres = IntThres,
+      mz_tol = mz_tol,
+      dot_thresh = dot_thresh,
+      min_common = min_common
+    )
+    
+    if (is.null(res) || nrow(res) == 0)
+      next
+    
+    res <- as.data.table(res)
+    
+    res <- unique(res,
+                  by = c("COMPID.sub", "COMPID.prod"))
+    
+    res[, val := paste0(
+      "!!", COMMON_IONS,
+      "!", round((FORW_IONS + REV_IONS)/2, 3),
+      "!", round((DOT_IONS + DOT_LOSS)/2, 3),
+      "!!", COMPID.prod
+    )]
+    
+    res_agg <- res[, .(
+      val = paste(unique(val), collapse = "|")
+    ),
+    by = COMPID.sub]
+    
+    res_agg[, sub_id := as.character(COMPID.sub)]
+    
+    col <- conv$col_name[k]
+    
+    if (!(col %in% names(comp_add)))
+      next
+    
+    comp_add[
+      res_agg,
+      on = .(compound_id = sub_id),
+      (col) := {
+        old <- get(col)
+        
+        combined <- ifelse(
+          is.na(old) | old == "",
+          val,
+          paste0(old, "|", val)
+        )
+        
+        sapply(strsplit(combined, "\\|"), function(x)
+          paste(unique(x), collapse = "|"))
+      }
+    ]
+    
+    success <- c(success, col)
+  }
+  
+  ## Write (creates or replaces the table)
+  dbWriteTable(
+    con,
+    "compound_add",
+    comp_add,
+    overwrite = TRUE
+  )
+  
+  log(
+    "Successful conversions: %s",
+    if (length(success) == 0)
+      "none"
+    else
+      paste(unique(success), collapse = ", ")
+  )
   
   invisible(comp_add)
 }
-
-
-
-# cspp_add<-cspp.tot(base.dir,finlist,SubDB="FTneg",Prod.exp=2)
-# write.table(cspp_add,"compound_add.txt",sep="\t",row.names=F)

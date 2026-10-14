@@ -1,5 +1,4 @@
-
-#' Extract full MSn fragmentation trees for features
+#' @title Extract full MSn fragmentation trees for features
 #'
 #' This function extracts complete MSn fragmentation trees (MS2, MS3 and
 #' MS4 spectra) associated with features from an `XcmsExperiment` object.
@@ -9,17 +8,17 @@
 #' All spectra belonging to the same fragmentation tree are linked to the
 #' originating feature through a propagated `feature_id`.
 #'
-#' @param ftms An \linkS4class{XcmsExperiment} object containing detected
+#' @param ftms An `XcmsExperiment` object containing detected
 #'   features and multi-level MSn data of a metabolomics experiment. 
 #'   The data is expected to include at least MS2 and MS3 spectra and optionally 
 #'   higher-order fragmentation levels (e.g. MS4 and above).
 #'
-#' @param ms2 A \linkS4class{Spectra} object containing all MS2 spectra whose
+#' @param ms2 A `Spectra` object containing all MS2 spectra whose
 #'   retention time and precursor m/z fall within the ranges of any
 #'   chromatographic peak of a feature in `ftms`, as returned for example by
 #'   \code{xcms::featureSpectra(ftms, msLevel = 2L)}.
 #'   
-#' @return A \linkS4class{Spectra} object containing all MS2, MS3 and MS4
+#' @return A `Spectra` object containing all MS2, MS3 and MS4
 #'   spectra associated with the input features. Each spectrum includes a
 #'   `feature_id` spectra variable identifying the originating feature.
 #'
@@ -35,7 +34,7 @@
 #' tree can be traced back to the originating feature.
 #'
 #' Spectra are processed independently for each `dataOrigin` and subsequently
-#' combined into a single \linkS4class{Spectra} object.
+#' combined into a single `Spectra` object.
 #'
 #' @section Processing steps:
 #' \enumerate{
@@ -52,16 +51,6 @@
 #'   \item Concatenate results across all data origins into a single object.
 #' }
 #'
-#' @examples
-#' ## Assume 'ftms' is an XcmsExperiment object
-#' ## Extract MS2 spectra associated with features
-#' ms2 <- xcms::featureSpectra(ftms, msLevel = 2L)
-#'
-#' ## Retrieve full MSn trees
-#' msn <- ftms_all_levels(ftms, ms2)
-#'
-#' length(msn)
-#'
 #' @importFrom xcms featureSpectra
 #' @import Spectra
 #' @importFrom S4Vectors findMatches
@@ -70,58 +59,24 @@ ftms_all_levels <- function(ftms, ms2) {
   
   cat("Number of MS2 spectra found:", length(ms2), "\n")
   
-  ##Convert to in-memory backend 
-  sps <- Spectra::setBackend(spectra(ftms), MsBackendMemory())
-  ms2 <- Spectra::setBackend(ms2, MsBackendMemory())
-  
   res <- lapply(unique(ms2$dataOrigin), function(origin) {
+    ms2_subset <- filterDataOrigin(ms2, origin)
     
-    ## MS2
-    ms2_subset <- applyProcessing(filterDataOrigin(ms2, origin))
-    
-    ## MS3
-    ms3_filtered <- applyProcessing(
-      filterDataOrigin(
-        sps[msLevel(sps) == 3],
-        origin
-      )
-    )
-    
-    m <- findMatches(
-      ms2_subset$acquisitionNum,
-      ms3_filtered$precScanNum
-    )
-    
+    ms3_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 3), origin)
+    ## To support n:m matches
+    m <- findMatches(ms2_subset$acquisitionNum, ms3_filtered$precScanNum)
     cat("Number of MS3 matched to MS2:", length(m), "\n")
-    
     ms3_filtered <- ms3_filtered[to(m)]
     ms3_filtered$feature_id <- ms2_subset$feature_id[from(m)]
-    ms3_filtered <- applyProcessing(ms3_filtered)
     
-    ## MS4
-    ms4_filtered <- applyProcessing(
-      filterDataOrigin(
-        sps[msLevel(sps) == 4],
-        origin
-      )
-    )
-    
-    m <- findMatches(
-      ms3_filtered$acquisitionNum,
-      ms4_filtered$precScanNum
-    )
-    
+    ms4_filtered <- filterDataOrigin(filterMsLevel(spectra(ftms), 4), origin)
+    m <- findMatches(ms3_filtered$acquisitionNum, ms4_filtered$precScanNum)
     cat("Number of MS4 matched to MS3:", length(m), "\n")
-    
     ms4_filtered <- ms4_filtered[to(m)]
     ms4_filtered$feature_id <- ms3_filtered$feature_id[from(m)]
-    ms4_filtered <- applyProcessing(ms4_filtered)
     
-    ## Combine
-    ms2_subset <- applyProcessing(ms2_subset)
-    
+    # Combine spectra for this origin
     c(ms2_subset, ms3_filtered, ms4_filtered)
   })
-  
-  do.call(c, res)
+  do.call("c", res)
 }

@@ -37,93 +37,205 @@ matchNegPos_SQL <- function(
     FTp_con,
     polarity_ftn = 0,
     polarity_ftp = 1,
-    minPeaks = 0.2
+    minIon = 0.2,
+    tol = 0.01,
+    spectrum_type_FTn = NULL,
+    spectrum_type_FTp = NULL
 ) {
   
-  ## Load negative-mode compound table
-  subdb_neg <- dbGetQuery(
-    FTn_con,
-    "SELECT retention_time, mass_measured, compound_id
-     FROM ms_compound ORDER BY compound_id"
-  )
-  
-
-  ## Load negative-mode MS2 peaks
-  neg_cols <- dbListFields(FTn_con, "msms_spectrum")
-  
-  
-  ms2_neg_df <- dbGetQuery(FTn_con, sprintf("
-    SELECT s.compound_id, p.mz
-    FROM msms_spectrum s
-      JOIN msms_spectrum_peak p USING(spectrum_id)
-    WHERE s.ms_level = 2
-      AND s.polarity = %d
-    ORDER BY s.compound_id, p.mz
-  ", polarity_ftn))
-  
-  ms2_neg_list <- split(round(ms2_neg_df$mz), ms2_neg_df$compound_id)
-  ms2_neg_list <- lapply(ms2_neg_list, unique)
-  
-  ## Load positive-mode MS2 peaks
-  pos_cols <- dbListFields(FTp_con, "msms_spectrum")
-
-  
-  ms2_pos_df <- dbGetQuery(FTp_con, sprintf("
-    SELECT s.compound_id, p.mz
-    FROM msms_spectrum s
-      JOIN msms_spectrum_peak p USING(spectrum_id)
-    WHERE s.ms_level = 2
-      AND s.polarity = %d
-    ORDER BY s.compound_id, p.mz
-  ", polarity_ftp))
-  
-  ms2_pos_list <- split(round(ms2_pos_df$mz), ms2_pos_df$compound_id)
-  ms2_pos_list <- lapply(ms2_pos_list, unique)
-  
-  ## Align negative MS2 list to compound table
-  ms2_neg <- ms2_neg_list[ as.character(subdb_neg$compound_id) ]
-  ms2_neg[sapply(ms2_neg, is.null)] <- list(integer(0))
-  
-  ## Replace NULL in positive MS2 list with empty vectors
-  ms2_pos_list[sapply(ms2_pos_list, is.null)] <- list(integer(0))
-  
-
-  ## Apply peak-overlap filtering
   if (is.null(LCal) || nrow(LCal) == 0) {
-    message("No candidate neg–pos alignments found; returning empty LCal.")
     return(LCal)
   }
   
+  
+  # Check whether spectrum_type exists
+  has_type_FTn <- "spectrum_type" %in%
+    DBI::dbListFields(FTn_con, "msms_spectrum")
+  
+  has_type_FTp <- "spectrum_type" %in%
+    DBI::dbListFields(FTp_con, "msms_spectrum")
+  
+  
+  # If spectrum_type exists, user must provide a value
+  if (has_type_FTn && is.null(spectrum_type_FTn)) {
+    stop(
+      "`spectrum_type_FTn` must be provided because ",
+      "`spectrum_type` exists in the FTn database."
+    )
+  }
+  
+  if (has_type_FTp && is.null(spectrum_type_FTp)) {
+    stop(
+      "`spectrum_type_FTp` must be provided because ",
+      "`spectrum_type` exists in the FTp database."
+    )
+  }
+  
+  
+  # Build FTn query
+  query_FTn <- "
+    SELECT
+      s.compound_id,
+      p.mz
+    FROM msms_spectrum s
+    JOIN msms_spectrum_peak p
+      USING(spectrum_id)
+    WHERE s.ms_level = ?
+      AND s.polarity = ?
+  "
+  
+  params_FTn <- list(
+    2,
+    polarity_ftn
+  )
+  
+  
+  # Add spectrum type filter only if column exists
+  if (has_type_FTn) {
+    
+    query_FTn <- paste0(
+      query_FTn,
+      " AND s.spectrum_type = ?"
+    )
+    
+    params_FTn <- c(
+      params_FTn,
+      list(spectrum_type_FTn)
+    )
+  }
+  
+  
+  # Build FTp query
+  query_FTp <- "
+    SELECT
+      s.compound_id,
+      p.mz
+    FROM msms_spectrum s
+    JOIN msms_spectrum_peak p
+      USING(spectrum_id)
+    WHERE s.ms_level = ?
+      AND s.polarity = ?
+  "
+  
+  params_FTp <- list(
+    2,
+    polarity_ftp
+  )
+  
+  
+  # Add spectrum type filter only if column exists
+  if (has_type_FTp) {
+    
+    query_FTp <- paste0(
+      query_FTp,
+      " AND s.spectrum_type = ?"
+    )
+    
+    params_FTp <- c(
+      params_FTp,
+      list(spectrum_type_FTp)
+    )
+  }
+  
+  
+  # Extract MS2 peaks
+  ms2_neg_df <- DBI::dbGetQuery(
+    FTn_con,
+    query_FTn,
+    params = params_FTn
+  )
+  
+  ms2_pos_df <- DBI::dbGetQuery(
+    FTp_con,
+    query_FTp,
+    params = params_FTp
+  )
+  
+  
+  # Check spectra
+  if (nrow(ms2_neg_df) == 0) {
+    warning("No matching MS2 spectra found in the FTn database.")
+    return(LCal[0, , drop = FALSE])
+  }
+  
+  if (nrow(ms2_pos_df) == 0) {
+    warning("No matching MS2 spectra found in the FTp database.")
+    return(LCal[0, , drop = FALSE])
+  }
+  
+  
+  # Split peaks by compound
+  ms2_neg <- split(
+    ms2_neg_df$mz,
+    ms2_neg_df$compound_id
+  )
+  
+  ms2_pos <- split(
+    ms2_pos_df$mz,
+    ms2_pos_df$compound_id
+  )
+  
+  
+  # Filter candidate pairs
   i <- 1
+  
   while (i <= nrow(LCal)) {
     
-    neg_id <- LCal[i, 1]   # FT negative COMPID
-    pos_id <- LCal[i, 7]   # FT positive COMPID
+    neg_id <- LCal[i, 1]
+    pos_id <- LCal[i, 7]
     
-    neg_row <- which(subdb_neg$compound_id == neg_id)
+    neg_peaks <- ms2_neg[[as.character(neg_id)]]
+    pos_peaks <- ms2_pos[[as.character(pos_id)]]
     
-    ## Remove pair if negative COMPID not found
-    if (length(neg_row) == 0) {
-      LCal <- LCal[-i, ]
-      next
-    }
-    neg_peaks <- ms2_neg[[neg_row]]
-    pos_peaks <- ms2_pos_list[[as.character(pos_id)]]
-    if (length(neg_peaks) == 0 || length(pos_peaks) == 0) {
-      LCal <- LCal[-i, ]
+    
+    # Remove pairs without MS2 spectra
+    if (is.null(neg_peaks) || is.null(pos_peaks)) {
+      LCal <- LCal[-i, , drop = FALSE]
       next
     }
     
-    pos_corrected <- pos_peaks - 2
-    same_ion <- sum(neg_peaks %in% pos_corrected)
     
-    if (same_ion / length(neg_peaks) < minPeaks) {
-      LCal <- LCal[-i, ]
+    # Remove missing values
+    neg_peaks <- neg_peaks[!is.na(neg_peaks)]
+    pos_peaks <- pos_peaks[!is.na(pos_peaks)]
+    
+    if (length(neg_peaks) == 0 ||
+        length(pos_peaks) == 0) {
+      
+      LCal <- LCal[-i, , drop = FALSE]
       next
     }
+    
+    
+    # Adjust positive-mode fragments
+    pos_peaks <- pos_peaks - 2
+    
+    
+    # Count matching ions
+    same_ion <- sum(
+      vapply(
+        neg_peaks,
+        function(x) {
+          any(abs(pos_peaks - x) <= tol)
+        },
+        logical(1)
+      )
+    )
+    
+    
+    # Fraction of FTn ions found in FTp
+    ratio <- same_ion / length(neg_peaks)
+    
+    
+    if (ratio < minIon) {
+      LCal <- LCal[-i, , drop = FALSE]
+      next
+    }
+    
     
     i <- i + 1
   }
   
-  return(unique(LCal))
+  
+  unique(LCal)
 }

@@ -1,4 +1,5 @@
-#' @title Aligning compounds from the same instrument 
+#' @title Aligning compounds from the same instrument with different ionization
+#'        mode
 #'
 #' @description
 #'
@@ -64,6 +65,14 @@
 #'
 #' @param save_assoc `logical(1)` If true we add the alignment result to the
 #'        Assoc text file.
+#'        
+#' @param spectrum_type_FTn `character(1)` Spectrum type to use for the reference
+#'        instrument. If `NULL` and the database does not contain a `spectrum_type`
+#'        column, all spectra are used.
+#'
+#' @param spectrum_type_FTp `character(1)` Spectrum type to use for the second
+#'        instrument. If `NULL` and the database does not contain a `spectrum_type`
+#'        column, all spectra are used.
 #'
 #' @return A `data.frame` containing the matched FTMSn-FTMSp or QTOFn-QTOFp 
 #'         compounds with columns:
@@ -91,18 +100,41 @@
 #' @export
 Aligning_FTn_FTp_SQL <- function(
     FTn_path, FTp_path, FTn_expnr, FTp_expnr,
-    Assoc = NULL, err = 0.02, t.ini = 5,
-    lc.err = 1, rng = 2, minIon = 0.01, minPeaks = 0.6, startpoint = 1,
-    save_assoc = FALSE) {
+    Assoc = NULL,
+    err = 0.02,
+    t.ini = 5,
+    lc.err = 1,
+    rng = 2,
+    minIon = 0.01,
+    minPeaks = 0.6,
+    startpoint = 1,
+    save_assoc = FALSE,
+    spectrum_type_FTn = NULL,
+    spectrum_type_FTp = NULL
+) {
   
+  # Load / initialize Assoc
   if (is.character(Assoc)) {
     
     assoc_file <- Assoc
     
     if (file.exists(Assoc)) {
-      Assoc_df <- read.table(Assoc, header = TRUE, sep = "\t")
+      
+      Assoc_df <- utils::read.table(
+        Assoc,
+        header = TRUE,
+        sep = "\t",
+        stringsAsFactors = FALSE
+      )
+      
     } else {
-      warning("File ", assoc_file, " not found. Proceeding without.")
+      
+      warning(
+        "File ",
+        assoc_file,
+        " not found. Proceeding without."
+      )
+      
       Assoc_df <- data.frame(
         ref_compid = integer(0),
         target_compid = integer(0),
@@ -126,51 +158,299 @@ Aligning_FTn_FTp_SQL <- function(
       target_database = character(0),
       stringsAsFactors = FALSE
     )
+    
     assoc_file <- NULL
   }
   
   
-  FTn_con   <- dbConnect(SQLite(), FTn_path)
-  FTp_con <- dbConnect(SQLite(), FTp_path)
-  on.exit(dbDisconnect(FTn_con))
-  on.exit(dbDisconnect(FTp_con))
+  # Database connections
+  FTn_con <- DBI::dbConnect(
+    RSQLite::SQLite(),
+    FTn_path
+  )
   
-  #Detect polarity
-  ftn_mode  <- dbGetQuery(FTn_con, sprintf("SELECT mode FROM experiment WHERE expid = %d", FTn_expnr))$mode
-  ftp_mode <- dbGetQuery(FTp_con, sprintf("SELECT mode FROM experiment WHERE expid = %d", FTp_expnr))$mode
+  FTp_con <- DBI::dbConnect(
+    RSQLite::SQLite(),
+    FTp_path
+  )
   
-  if (!length(ftn_mode))
-    stop("Experiment '", FT_expnr,"' not found in the database '", FTn_path, "'")
-  if (!length(ftp_mode))
-    stop("Experiment '", QTOF_expnr,"' not found in the database '", FTp_path, "'")
+  on.exit({
+    DBI::dbDisconnect(FTn_con)
+    DBI::dbDisconnect(FTp_con)
+  }, add = TRUE)
   
-  polarity_ftn  <- ifelse(ft_mode == "neg", 0, 1)
-  polarity_ftp <- ifelse(qtof_mode == "neg", 0, 1)
   
-  #Generate LCal and remove outliers
-  LCal <- Aligning_General_SQL(FT_con = FTn_con, QTOF_con = FTp_con, 
-                               FT_expnr = FTn_expnr, QTOF_expnr= FTp_expnr, err,
-                               t.ini)
-  LCal <- matchNegPos_SQL(LCal, FT_con = FTn_con, QTOF_con = FTp_con, 
-                         minPeaks = minPeaks, polarity_ftn = polarity_ftn,
-                         polarity_ftp = polarity_ftp)
-  LCal <- RemoveOutliers(LCal, rng)
+  # Database names
+  ftn_db_name <- basename(FTn_path)
+  ftp_db_name <- basename(FTp_path)
   
-  #Regression
-  rg <- RegressionPie_LCalign_SQL(LCal, startpoint)
-  PlotPie_LCalign(LCal, rg)
-  #Fill Assoc
-  Assoc_df <- FillAssocFTnFTpn_SQL(
-    FTn_con = FTn_con, FTp_con = FTp_con, Assoc = Assoc_df, FTn_expnr = FTn_expnr,
-    FTp_expnr = FTp_expnr, cutoff = 1, rg = rg, lc.err = lc.err, err = err,
-    minIon = minIon,
-    polarity_ftn = polarity_ftn, polarity_ftp = polarity_ftp,
-    FTn_path = FTn_path, FTp_path = FTp_path)
   
-  #Save updated Assoc if requested
-  if (save_assoc && !is.null(assoc_file)) {
-    write.table(Assoc_df, file = assoc_file, sep = "\t", row.names = FALSE, quote = FALSE)
+  # Check spectrum_type columns
+  has_type_FTn <- "spectrum_type" %in%
+    DBI::dbListFields(
+      FTn_con,
+      "msms_spectrum"
+    )
+  
+  has_type_FTp <- "spectrum_type" %in%
+    DBI::dbListFields(
+      FTp_con,
+      "msms_spectrum"
+    )
+  
+  
+  # Check spectrum_type arguments
+  if (has_type_FTn && is.null(spectrum_type_FTn)) {
+    
+    available_types <- DBI::dbGetQuery(
+      FTn_con,
+      "
+      SELECT DISTINCT spectrum_type
+      FROM msms_spectrum
+      WHERE spectrum_type IS NOT NULL
+      "
+    )$spectrum_type
+    
+    stop(
+      "`spectrum_type_FTn` must be provided. ",
+      "Available spectrum types: ",
+      paste(available_types, collapse = ", ")
+    )
   }
+  
+  
+  if (has_type_FTp && is.null(spectrum_type_FTp)) {
+    
+    available_types <- DBI::dbGetQuery(
+      FTp_con,
+      "
+      SELECT DISTINCT spectrum_type
+      FROM msms_spectrum
+      WHERE spectrum_type IS NOT NULL
+      "
+    )$spectrum_type
+    
+    stop(
+      "`spectrum_type_FTp` must be provided. ",
+      "Available spectrum types: ",
+      paste(available_types, collapse = ", ")
+    )
+  }
+  
+  
+  # Check that requested spectrum types exist
+  if (has_type_FTn) {
+    
+    available_types <- DBI::dbGetQuery(
+      FTn_con,
+      "
+      SELECT DISTINCT spectrum_type
+      FROM msms_spectrum
+      WHERE spectrum_type IS NOT NULL
+      "
+    )$spectrum_type
+    
+    if (!spectrum_type_FTn %in% available_types) {
+      stop(
+        "spectrum_type_FTn = '",
+        spectrum_type_FTn,
+        "' not found. Available types: ",
+        paste(available_types, collapse = ", ")
+      )
+    }
+  }
+  
+  
+  if (has_type_FTp) {
+    
+    available_types <- DBI::dbGetQuery(
+      FTp_con,
+      "
+      SELECT DISTINCT spectrum_type
+      FROM msms_spectrum
+      WHERE spectrum_type IS NOT NULL
+      "
+    )$spectrum_type
+    
+    if (!spectrum_type_FTp %in% available_types) {
+      stop(
+        "spectrum_type_FTp = '",
+        spectrum_type_FTp,
+        "' not found. Available types: ",
+        paste(available_types, collapse = ", ")
+      )
+    }
+  }
+  
+  
+  # Experiment mode
+  ftn_mode <- DBI::dbGetQuery(
+    FTn_con,
+    sprintf(
+      "SELECT mode
+       FROM experiment
+       WHERE expid = %d",
+      FTn_expnr
+    )
+  )$mode
+  
+  
+  ftp_mode <- DBI::dbGetQuery(
+    FTp_con,
+    sprintf(
+      "SELECT mode
+       FROM experiment
+       WHERE expid = %d",
+      FTp_expnr
+    )
+  )$mode
+  
+  
+  if (!length(ftn_mode)) {
+    stop(
+      "FTn experiment ",
+      FTn_expnr,
+      " not found."
+    )
+  }
+  
+  if (!length(ftp_mode)) {
+    stop(
+      "FTp experiment ",
+      FTp_expnr,
+      " not found."
+    )
+  }
+  
+  
+  # Detect polarity
+  ftn_mode <- tolower(ftn_mode[1])
+  ftp_mode <- tolower(ftp_mode[1])
+  
+  negative_values <- c(
+    "neg",
+    "negative",
+    "-",
+    "negativ"
+  )
+  
+  polarity_ftn <- ifelse(
+    ftn_mode %in% negative_values,
+    0,
+    1
+  )
+  
+  polarity_ftp <- ifelse(
+    ftp_mode %in% negative_values,
+    0,
+    1
+  )
+  
+  
+  # Initial LC alignment
+  LCal <- Aligning_General_SQL(
+    FT_con = FTn_con,
+    QTOF_con = FTp_con,
+    FT_expnr = FTn_expnr,
+    QTOF_expnr = FTp_expnr,
+    err = err,
+    t.ini = t.ini
+  )
+  
+  
+  if (is.null(LCal) || nrow(LCal) == 0) {
+    warning(
+      "No initial alignment candidates found."
+    )
+    return(Assoc_df)
+  }
+  
+  
+  # MS2 matching
+  LCal <- matchNegPos_SQL(
+    LCal = LCal,
+    FTn_con = FTn_con,
+    FTp_con = FTp_con,
+    polarity_ftn = polarity_ftn,
+    polarity_ftp = polarity_ftp,
+    minIon = minIon,
+    spectrum_type_FTn = spectrum_type_FTn,
+    spectrum_type_FTp = spectrum_type_FTp
+  )
+  
+  
+  if (is.null(LCal) || nrow(LCal) == 0) {
+    warning(
+      "No candidates remained after MS2 matching."
+    )
+    return(Assoc_df)
+  }
+  
+  
+  # Remove RT outliers
+  LCal <- RemoveOutliers(
+    LCal,
+    rng
+  )
+  
+  
+  if (is.null(LCal) || nrow(LCal) == 0) {
+    warning(
+      "No candidates remained after outlier removal."
+    )
+    return(Assoc_df)
+  }
+  
+  
+  # Piecewise regression
+  rg <- RegressionPie_LCalign_SQL(
+    LCal,
+    startpoint
+  )
+  
+  
+  if (interactive() && capabilities("cairo")) {
+    try(
+      PlotPie_LCalign(
+        LCal,
+        rg
+      ),
+      silent = TRUE
+    )
+  }
+  
+  
+  # Fill associations
+  Assoc_df <- FillAssocFTnFTpn_SQL(
+    FTn_con = FTn_con,
+    FTp_con = FTp_con,
+    Assoc = Assoc_df,
+    FTn_expnr = FTn_expnr,
+    FTp_expnr = FTp_expnr,
+    cutoff = 1,
+    rg = rg,
+    lc.err = lc.err,
+    err = err,
+    minIon = minIon,
+    polarity_ftn = polarity_ftn,
+    polarity_ftp = polarity_ftp,
+    FTn_path = ftn_db_name,
+    FTp_path = ftp_db_name
+  )
+  
+  
+  # Save associations
+  if (save_assoc && !is.null(assoc_file)) {
+    
+    utils::write.table(
+      Assoc_df,
+      file = assoc_file,
+      sep = "\t",
+      row.names = FALSE,
+      quote = FALSE
+    )
+  }
+  
   
   return(Assoc_df)
 }
