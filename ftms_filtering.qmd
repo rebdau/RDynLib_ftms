@@ -34,7 +34,7 @@ library(readxl)
 library(IRanges)
 library(S4Vectors)
 library(here)
-#library(RDynLib)
+library(RDynLib)
 register(SerialParam())
 pth <- getwd()
 pth

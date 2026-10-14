@@ -31,15 +31,22 @@ library(devtools)
 load_all()
 ```
 
-Merge the two spectra object with two spectrum types
+#Call the ftms spectra object produced in `ftms_filtering.qmd` document,:
 
 ```{r}
 # Load Spectra objects
 load("data/ftms_all.RData")
+```
+
+#Create an output sql file:
+
+```{r}
 dbfile <- here("data", "ftms_flax_neg_acc.sqlite")
 ```
 
-Create an sql database with accessors for flax ftms spectra:
+#Create an sql database for flax ftms spectra
+
+Here we call `createSpectraSQLite()` from the RDynLib package, the function takes a spectra object, the experiment metadata as input, and returns an sql database in the given output file:
 
 ```{r}
 createSpectraSQLite(
@@ -63,6 +70,10 @@ createSpectraSQLite(
 )
 ```
 
+#Query the output SQL database
+
+Create an SQL connection to the output database and list the tables
+
 ```{r}
 con <- DBI::dbConnect(RSQLite::SQLite(), dbfile)
 
@@ -70,25 +81,37 @@ DBI::dbListTables(con)
 
 ```
 
+Read the experiment table
+
 ```{r}
 DBI::dbReadTable(con, "experiment")
 ```
+
+Count the compounds number:
 
 ```{r}
 DBI::dbGetQuery(con, "SELECT COUNT(*) FROM ms_compound")
 ```
 
+Show the the first 5 rows from the ms_compound table
+
 ```{r}
 DBI::dbGetQuery(con, "SELECT * FROM ms_compound LIMIT 5")
 ```
+
+The number of spectrums in the database from the msms_spectrum table:
 
 ```{r}
 DBI::dbGetQuery(con, "SELECT COUNT(*) FROM msms_spectrum")
 ```
 
+Show the the first 5 rows from the msms_spectrumtable
+
 ```{r}
 DBI::dbGetQuery(con, "SELECT * FROM msms_spectrum LIMIT 5")
 ```
+
+Verify the number of compound per experiment
 
 ```{r}
 DBI::dbGetQuery(con, "
@@ -98,6 +121,8 @@ GROUP BY expid
 ")
 ```
 
+Check if all the compound_ids are not null
+
 ```{r}
 DBI::dbGetQuery(con, "
 SELECT COUNT(*)
@@ -105,6 +130,8 @@ FROM msms_spectrum
 WHERE compound_id IS NULL
 ")
 ```
+
+Print the number of peaks per spectrum
 
 ```{r}
 DBI::dbGetQuery(con, "
@@ -116,10 +143,14 @@ LIMIT 10
 ")
 ```
 
+Print the first 5 rows from the msms_spectrum_peak table
+
 ```{r}
 DBI::dbGetQuery(con, "SELECT * FROM msms_spectrum_peak LIMIT 5")
 
 ```
+
+Check the minimum and maximum precursorMz values in the dataset
 
 ```{r}
 DBI::dbGetQuery(con, "
@@ -128,12 +159,16 @@ FROM msms_spectrum
 ")
 ```
 
+Check the minimum and maximum retention time values in the dataset
+
 ```{r}
 DBI::dbGetQuery(con, "
 SELECT MIN(rtime), MAX(rtime)
 FROM msms_spectrum
 ")
 ```
+
+Here we print the number of compounds, spectra and peaks in the dataset
 
 ```{r}
 DBI::dbGetQuery(con, "
@@ -152,7 +187,9 @@ WHERE compound_id IS NULL
 ")
 ```
 
-Add Feature matrix to the database
+#Create the feature matrix table in the sql database
+
+Here we call the `add_FeatureMatrix_SQLite()` function from RDynLib, the function takes as input the sql data file, and the \`XCMSnExperiment\` object produced in the 'ftms_preprocessing.qmd' file, the function then add the feature matrix with intensity of each feature in each sample as a table to the sql database.
 
 ```{r}
 add_FeatureMatrix_SQLite(
@@ -161,7 +198,7 @@ add_FeatureMatrix_SQLite(
 )
 ```
 
-Verification:
+Print the first 5 rows from the feature_matrix table:
 
 ```{r}
 DBI::dbGetQuery(con, "
@@ -169,48 +206,4 @@ SELECT *
 FROM feature_matrix
 Limit 5
 ")
-```
-
-Add RILs to Dynlib sql database
-
-```{r}
-# Create new database
-dbf <- here("data", "DYL_FLAX_FTMSneg.sqlite")
-# merge
-merge_databases(
-  main_db   = here("data","DyLib_FTMS_neg_or.sqlite"),
-  add_db    = here("data","ftms_flax_neg.sqlite"),
-  output_db = dbf
-)
-```
-
-Next, we verify if the experimznt has been well added to the global database
-
-```{r}
-con_merged <- dbConnect(RSQLite::SQLite(), dbf)
-```
-
-the new experiment number of RILs is 267
-
-```{r}
-dbGetQuery(con_merged, "
-  SELECT MAX(CAST(expid AS INTEGER)) AS max_expid
-  FROM experiment
-")
-```
-
-```{r}
-dbGetQuery(con_merged, "Select * from experiment where expid = 266")
-```
-
-```{r}
-dbGetQuery(con_merged, "Select * from ms_compound where expid = 266 LIMIT 10")
-```
-
-```{r}
-dbGetQuery(con_merged, "Select * from msms_spectrum where compound_id = 100912")
-```
-
-```{r}
-dbGetQuery(con_merged, "Select * from msms_spectrum_peak where spectrum_id = 202203")
 ```
